@@ -13,10 +13,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (전투 확인 단계 연동 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (전투 중 스토리 동시 열람 버전)")
 st.markdown(
-    "몬스터 조우 시 확인 단계를 거쳐 안전하게 전투를 시작할 수 있는 텍스트 RPG"
-    " 공간입니다."
+    "전투 중에도 이전 스토리와 대화 내용을 확인하며 턴제 전투를 즐길 수 있는"
+    " 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화]
@@ -35,9 +35,7 @@ if "stats" not in st.session_state:
 
 if "in_combat" not in st.session_state:
   st.session_state.in_combat = False
-  st.session_state.pending_combat = (
-      False  # 📌 전투 전 확인 단계 상태 변수 추가
-  )
+  st.session_state.pending_combat = False
   st.session_state.enemy = None
   st.session_state.pending_enemy = None
   st.session_state.combat_log = []
@@ -376,7 +374,29 @@ else:
             ),
         )
 
-    # ================= [화면 분기: 전투 대기(확인) vs 전투 중 vs 평상시 스토리] =================
+    # ================= [공통: 이전 대화 기록(스토리) 먼저 렌더링] =================
+    for message in st.session_state.messages:
+      with st.chat_message(message["role"]):
+        if message["role"] == "assistant":
+          clean_content = re.sub(
+              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
+              "",
+              message["content"],
+              flags=re.DOTALL,
+          )
+          clean_content = re.sub(
+              r"\[START_COMBAT:\s*(\{.*?\})\s*\]",
+              "",
+              clean_content,
+              flags=re.DOTALL,
+          ).strip()
+          st.markdown(clean_content)
+        else:
+          st.markdown(message["content"])
+
+    st.markdown("---")
+
+    # ================= [화면 분기: 전투 대기(확인) vs 전투 중 vs 평상시 스토리 입력] =================
     if st.session_state.pending_combat:
       # ⚠️ [전투 시작 전 확인 화면]
       enemy = st.session_state.pending_enemy
@@ -444,26 +464,7 @@ else:
         st.markdown(f"- {log}")
 
     else:
-      # 📖 [평상시 스토리 및 채팅 렌더링 영역]
-      for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-          if message["role"] == "assistant":
-            clean_content = re.sub(
-                r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
-                "",
-                message["content"],
-                flags=re.DOTALL,
-            )
-            clean_content = re.sub(
-                r"\[START_COMBAT:\s*(\{.*?\})\s*\]",
-                "",
-                clean_content,
-                flags=re.DOTALL,
-            ).strip()
-            st.markdown(clean_content)
-          else:
-            st.markdown(message["content"])
-
+      # 📖 [평상시 스토리 입력 영역]
       if user_prompt := st.chat_input("어떤 행동을 하시겠습니까?"):
         st.session_state.messages.append(
             {"role": "user", "content": user_prompt}
@@ -488,7 +489,7 @@ else:
               )
               bot_response = response.text
 
-              # 1. 전투 시작 트리거 감지 ([START_COMBAT]) -> 즉시 전투로 안 가고 대기(Pending) 상태로 전환
+              # 1. 전투 시작 트리거 감지 ([START_COMBAT])
               combat_match = re.search(
                   r"\[START_COMBAT:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
               )
