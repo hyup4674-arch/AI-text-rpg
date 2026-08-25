@@ -127,9 +127,8 @@ else:
           f"- 장비: {json.dumps(current_stats['equipment'], ensure_ascii=False)}\n"
           f"- 인벤토리: {json.dumps(current_stats['inventory'], ensure_ascii=False)}\n"
           f"- 기술: {json.dumps(current_stats['skills'], ensure_ascii=False)}\n\n"
-          "매 턴 답변의 마지막 줄에 [상태: 체력 XX/XX, 마나 XX/XX, 골드 XX, 장비: ..., 인벤토리: ..., 기술: ...]를 포함하고, "
-          "스탯, 장비, 인벤토리, 기술 등의 변동이 발생할 경우 반드시 답변 맨 마지막 줄에 단독으로 "
-          '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자, "equipment": {"무기": "...", "갑옷": "..."}, "inventory": ["..."], "skills": ["..."]}] '
+          "매 턴 답변의 마지막 줄에 [상태: 체력 XX/XX, 마나 XX/XX, 골드 XX]를 포함 "
+          '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자}] '
           "형식의 JSON 데이터를 포함해 주세요. 변동이 없더라도 현재 상태의 전체 JSON을 반드시 포함해 주세요."
       )
 
