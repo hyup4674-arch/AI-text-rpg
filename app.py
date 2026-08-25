@@ -146,9 +146,9 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
-        # 📌 안정적인 무료 Flash 모델(gemini-2.5-flash) 적용
+        # 📌 일일 무료 한도가 가장 높은 gemini-3.5-flash-lite 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash-lite",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -193,8 +193,9 @@ else:
                 )
             )
 
+        # 📌 기존 히스토리 로드 시에도 gemini-3.5-flash-lite 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash-lite",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
