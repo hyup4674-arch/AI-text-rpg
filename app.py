@@ -1,24 +1,76 @@
-from google import genai
-from google.genai import types
 import json
 import os
+import re
 import streamlit as st
+from google import genai
+from google.genai import types
 
 # 🔑 [API 키 미리 입력 설정]
 DEFAULT_API_KEY = ""
-
 SAVE_FILE = "rpg_save.json"
 
 st.set_page_config(
-    page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="centered"
+    page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (메인 대시보드 탑재형)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여 스마트폰과 PC에서 즐기는 무제한"
-    " 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, 메인 화면 상단에 캐릭터의 모든"
+    " 스탯, 장비, 인벤토리, 기술이 실시간으로 고정 표시되는 텍스트 RPG"
+    " 공간입니다."
 )
 
-# 사이드바 설정
+# 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
+if "stats" not in st.session_state:
+  st.session_state.stats = {
+      "hp": 100,
+      "max_hp": 100,
+      "mp": 50,
+      "max_mp": 50,
+      "gold": 50,
+      "level": 1,
+      "equipment": {"무기": "낡은 단검", "갑옷": "누더기 옷", "장신구": "없음"},
+      "inventory": ["낡은 단검", "체력 포션 (소)"],
+      "skills": ["기본 찌르기", "약한 응급 치료"],
+  }
+
+# 🖥️ [메인 화면 상단 고정 대시보드 영역]
+st.markdown("---")
+st.markdown("### 🛡️ [실시간 캐릭터 종합 상태 대시보드]")
+
+dash_col1, dash_col2, dash_col3, dash_col4 = st.columns(
+    4, gap="medium", border=True
+)
+stats = st.session_state.stats
+
+with dash_col1:
+  st.metric(
+      label="❤️ 체력 (HP)", value=f"{stats['hp']} / {stats['max_hp']}"
+  )
+  st.metric(label="⭐ 캐릭터 레벨", value=f"Lv. {stats['level']}")
+
+with dash_col2:
+  st.metric(
+      label="💙 마나 (MP)", value=f"{stats['mp']} / {stats['max_mp']}"
+  )
+  st.metric(label="💰 보유 골드", value=f"{stats['gold']} G")
+
+with dash_col3:
+  st.write("##### ⚔️ 장착 장비")
+  for slot, item in stats["equipment"].items():
+    st.write(f"- **{slot}**: {item}")
+
+with dash_col4:
+  st.write("##### 🎒 인벤토리 & ✨ 기술")
+  st.write(
+      f"**소지품**: {', '.join(stats['inventory']) if stats['inventory'] else '없음'}"
+  )
+  st.write(
+      f"**사용 가능 기술**: {', '.join(stats['skills']) if stats['skills'] else '없음'}"
+  )
+
+st.markdown("---")
+
+# 사이드바 설정 (백업 및 초기화)
 st.sidebar.header("⚙️ 게임 설정 및 백업")
 
 api_key_input = st.sidebar.text_input(
@@ -77,11 +129,22 @@ else:
     ):
       st.session_state.client = genai.Client(api_key=api_key_input)
 
+      # 🛠️ [시스템 프롬프트에 상세 스탯, 장비, 기술 정보 반영 및 JSON 업데이트 규칙 추가]
+      current_stats = st.session_state.stats
       system_instruction = (
           "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
-          "플레이어의 입력에 따라 흥미진진한 모험 상황을 묘사하고, "
-          "매 턴 답변의 마지막 줄에 [상태: 체력 100/100, 골드 50, 소지품: 낡은 단검]과 같이 "
-          "플레이어의 현재 상태를 업데이트해서 반드시 포함해 주세요."
+          "플레이어의 입력에 따라 흥미진진한 모험 상황을 묘사하세요.\n"
+          "현재 플레이어의 상태 정보:\n"
+          f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
+          f"- MP: {current_stats['mp']}/{current_stats['max_mp']}\n"
+          f"- 골드: {current_stats['gold']}, 레벨: {current_stats['level']}\n"
+          f"- 장비: {json.dumps(current_stats['equipment'], ensure_ascii=False)}\n"
+          f"- 인벤토리: {json.dumps(current_stats['inventory'], ensure_ascii=False)}\n"
+          f"- 기술: {json.dumps(current_stats['skills'], ensure_ascii=False)}\n\n"
+          "매 턴 답변의 마지막 줄에 [상태: 체력 XX/XX, 마나 XX/XX, 골드 XX, 장비: ..., 인벤토리: ..., 기술: ...]를 포함하고, "
+          "스탯, 장비, 인벤토리, 기술 등의 변동이 발생할 경우 반드시 답변 맨 마지막 줄에 단독으로 "
+          '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자, "equipment": {"무기": "...", "갑옷": "..."}, "inventory": ["..."], "skills": ["..."]}] '
+          "형식의 JSON 데이터를 포함해 주세요. 변동이 없더라도 현재 상태의 전체 JSON을 반드시 포함해 주세요."
       )
 
       loaded_messages = []
@@ -96,7 +159,7 @@ else:
 
       if not st.session_state.messages:
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -108,9 +171,10 @@ else:
               " 시작해 주세요."
           )
           response = st.session_state.chat_session.send_message(initial_prompt)
+          bot_response = response.text
           st.session_state.messages = [{
               "role": "assistant",
-              "content": f"🏰 **[모험이 시작되었습니다]**\n\n{response.text}",
+              "content": f"🏰 **[모험이 시작되었습니다]**\n\n{bot_response}",
           }]
 
           with open(SAVE_FILE, "w", encoding="utf-8") as f:
@@ -131,7 +195,7 @@ else:
             )
 
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -155,6 +219,21 @@ else:
           response = st.session_state.chat_session.send_message(user_prompt)
           bot_response = response.text
           st.markdown(bot_response)
+
+          # 🔍 [JSON 데이터 파싱 및 실시간 상태 동기화]
+          match = re.search(
+              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
+          )
+          if match:
+            try:
+              updated_json_str = match.group(1)
+              updated_data = json.loads(updated_json_str)
+              for k, v in updated_data.items():
+                if k in st.session_state.stats:
+                  st.session_state.stats[k] = v
+              st.rerun()
+            except Exception as e:
+              pass
 
       st.session_state.messages.append(
           {"role": "assistant", "content": bot_response}
