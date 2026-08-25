@@ -14,7 +14,7 @@ st.set_page_config(
 )
 st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (사이드바 실시간 연동 버전)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, 스탯 변경 및 모델 변경 테스트가"
+    "Google Gemini API와 Streamlit을 연동하여, 스탯 변경 및 동적 모델 선택이"
     " 가능한 텍스트 RPG 공간입니다."
 )
 
@@ -32,7 +32,7 @@ if "stats" not in st.session_state:
       "skills": ["기본 찌르기", "약한 응급 치료"],
   }
 
-# ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택창]
+# ⚙️ [좌측 사이드바: 게임 설정 및 동적 모델 선택 드롭다운]
 st.sidebar.header("⚙️ 게임 설정 및 관리")
 
 api_key_input = st.sidebar.text_input(
@@ -42,13 +42,43 @@ api_key_input = st.sidebar.text_input(
     help="Google AI Studio에서 발급받은 API 키를 입력하세요.",
 )
 
-# 📌 사이드바에 모델명을 직접 입력하거나 변경할 수 있는 입력 상자 추가
-selected_model = st.sidebar.text_input(
-    "사용할 Gemini 모델명 입력",
-    value="gemini-3.7-flash",
+# 📌 API 키가 입력되면 사용 가능한 모델 목록을 동적으로 가져오고, 아니면 기본 추천 목록 사용
+default_models = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+]
+
+available_models = default_models
+if api_key_input:
+  try:
+    temp_client = genai.Client(api_key=api_key_input)
+    fetched = []
+    for m in temp_client.models.list():
+      m_name = getattr(m, "name", "")
+      if m_name:
+        clean_name = m_name.replace("models/", "")
+        if "flash" in clean_name or "lite" in clean_name:
+          fetched.append(clean_name)
+    if fetched:
+      available_models = sorted(list(set(fetched)))
+  except Exception:
+    pass
+
+# 기본 선택값 설정 (잘 작동하는 gemini-3.5-flash-lite 우선 선택)
+default_index = 0
+if "gemini-3.5-flash-lite" in available_models:
+  default_index = available_models.index("gemini-3.5-flash-lite")
+
+selected_model = st.sidebar.selectbox(
+    "사용할 Gemini 모델 선택",
+    options=available_models,
+    index=default_index,
     help=(
-        "예: gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash-lite 등"
-        " 원하는 모델명을 입력하세요."
+        "현재 API 계정에서 지원하는 모델 목록입니다. 원하시는 모델을 선택하세요."
     ),
 )
 
@@ -120,7 +150,7 @@ if not api_key_input:
   st.warning("⚠️ 좌측 사이드바에 **Google Gemini API 키**를 입력해 주세요.")
 else:
   try:
-    # 📌 클라이언트가 없거나, 모델이 변경되었을 경우 채팅 세션을 새롭게 생성
+    # 📌 클라이언트가 없거나, 선택한 모델이 변경되었을 경우 채팅 세션을 새롭게 생성
     if (
         "client" not in st.session_state
         or "chat_session" not in st.session_state
@@ -159,7 +189,7 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
-        # 📌 사이드바에서 입력한 모델명을 동적으로 적용
+        # 📌 드롭다운에서 선택한 모델명 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
             model=selected_model,
             config=types.GenerateContentConfig(
@@ -207,7 +237,7 @@ else:
                 )
             )
 
-        # 📌 기존 히스토리 로드 시에도 사이드바의 모델명 적용
+        # 📌 기존 히스토리 로드 시에도 선택한 모델명 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
             model=selected_model,
             history=api_history if api_history else None,
