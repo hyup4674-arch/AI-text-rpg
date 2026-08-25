@@ -12,10 +12,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (사이드바 상태 패널 탑재형)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, 좌측 사이드바에 캐릭터의 모든"
-    " 스탯·장비·기술이 상시 표시되는 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, 선택지에 따라 스토리가"
+    " 진행되며 좌측 사이드바 상태창이 실시간 연동되는 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -119,7 +119,7 @@ else:
       current_stats = st.session_state.stats
       system_instruction = (
           "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
-          "플레이어의 입력에 따라 흥미진진한 모험 상황을 묘사하세요.\n"
+          "플레이어가 '1', '2' 같은 번호 선택지나 자유로운 텍스트로 행동을 입력하면, 그 선택에 따라 즉시 스토리를 다음 단계로 전개하고 흥미진진한 상황과 선택지를 묘사하세요.\n"
           "현재 플레이어의 상태 정보:\n"
           f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
           f"- MP: {current_stats['mp']}/{current_stats['max_mp']}\n"
@@ -127,9 +127,10 @@ else:
           f"- 장비: {json.dumps(current_stats['equipment'], ensure_ascii=False)}\n"
           f"- 인벤토리: {json.dumps(current_stats['inventory'], ensure_ascii=False)}\n"
           f"- 기술: {json.dumps(current_stats['skills'], ensure_ascii=False)}\n\n"
-          "매 턴 답변의 마지막 줄에 [상태: 체력 XX/XX, 마나 XX/XX, 골드 XX]를 포함 "
-          '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자}] '
-          "형식의 JSON 데이터를 포함해 주세요. 변동이 없더라도 현재 상태의 전체 JSON을 반드시 포함해 주세요."
+          "주의사항: 답변 본문에는 [상태: ...] 같은 텍스트 상태창을 절대 출력하지 마십시오. "
+          "대신 스탯, 장비, 인벤토리, 기술 등의 변동이 발생할 경우(또는 유지될 경우) 반드시 답변 맨 마지막 줄에 단독으로 "
+          '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자, "equipment": {"무기": "...", "갑옷": "..."}, "inventory": ["..."], "skills": ["..."]}] '
+          "형식의 JSON 데이터만 남겨주세요."
       )
 
       loaded_messages = []
@@ -153,7 +154,8 @@ else:
         with st.spinner("새로운 게임 세계를 생성하는 중입니다..."):
           initial_prompt = (
               "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 게임을"
-              " 시작해 주세요."
+              " 시작해 주세요. (플레이어가 고를 수 있는 선택지도 2~3가지 함께"
+              " 제시해 주세요)"
           )
           response = st.session_state.chat_session.send_message(initial_prompt)
           bot_response = response.text
@@ -188,9 +190,19 @@ else:
             ),
         )
 
+    # 대화 기록 렌더링 (출력 시 [JSON_UPDATE] 태그는 숨김 처리)
     for message in st.session_state.messages:
       with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        if message["role"] == "assistant":
+          clean_content = re.sub(
+              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
+              "",
+              message["content"],
+              flags=re.DOTALL,
+          ).strip()
+          st.markdown(clean_content)
+        else:
+          st.markdown(message["content"])
 
     if user_prompt := st.chat_input("어떤 행동을 하시겠습니까?"):
       st.session_state.messages.append(
@@ -203,8 +215,8 @@ else:
         with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
           response = st.session_state.chat_session.send_message(user_prompt)
           bot_response = response.text
-          st.markdown(bot_response)
 
+          # JSON 데이터를 파싱하여 사이드바 상태창 업데이트
           match = re.search(
               r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
           )
@@ -215,9 +227,17 @@ else:
               for k, v in updated_data.items():
                 if k in st.session_state.stats:
                   st.session_state.stats[k] = v
-              st.rerun()
             except Exception as e:
               pass
+
+          # 채팅창에는 [JSON_UPDATE] 태그를 제외한 순수 스토리만 렌더링
+          clean_bot_response = re.sub(
+              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
+              "",
+              bot_response,
+              flags=re.DOTALL,
+          ).strip()
+          st.markdown(clean_bot_response)
 
       st.session_state.messages.append(
           {"role": "assistant", "content": bot_response}
@@ -225,6 +245,9 @@ else:
 
       with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(st.session_state.messages, f, ensure_ascii=False)
+
+      # 상태 업데이트를 즉시 반영하기 위해 화면 재실행
+      st.rerun()
 
   except Exception as e:
     st.error(
