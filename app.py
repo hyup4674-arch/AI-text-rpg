@@ -409,12 +409,15 @@ else:
             match = re.search(
                 r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL
             )
+            stats_updated = False
             if match:
               try:
                 updated_data = json.loads(match.group(1))
                 for k, v in updated_data.items():
                   if k in st.session_state.stats:
-                    st.session_state.stats[k] = v
+                    if st.session_state.stats[k] != v:
+                      st.session_state.stats[k] = v
+                      stats_updated = True
               except Exception:
                 pass
 
@@ -441,7 +444,8 @@ else:
             with open(SAVE_FILE, "w", encoding="utf-8") as f:
               json.dump(st.session_state.messages, f, ensure_ascii=False)
 
-            if combat_occurred:
+            # 💡 스탯이 변경되었거나 전투가 발생한 경우 즉시 페이지를 새로고쳐 사이드바 반영
+            if combat_occurred or stats_updated:
               st.rerun()
 
           except Exception as e:
