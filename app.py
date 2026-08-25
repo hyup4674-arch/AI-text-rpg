@@ -12,10 +12,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (최적화 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (예외 처리 및 최적화 버전)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, 불필요한 중복 실행을 없애고"
-    " API 할당량을 아끼도록 최적화된 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, API 한도 초과(429 에러) 시 앱이"
+    " 튕기지 않도록 예외 처리가 적용된 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -32,7 +32,7 @@ if "stats" not in st.session_state:
       "skills": ["기본 찌르기", "약한 응급 치료"],
   }
 
-# ⚙️ [좌측 사이드바: 상태창은 최신 스탯을 반영하여 자동 렌더링됨]
+# ⚙️ [좌측 사이드바: 게임 설정, 상태창, 백업 관리 통합]
 st.sidebar.header("⚙️ 게임 설정 및 관리")
 
 api_key_input = st.sidebar.text_input(
@@ -157,8 +157,17 @@ else:
               " 시작해 주세요. (플레이어가 고를 수 있는 선택지도 2~3가지 함께"
               " 제시해 주세요)"
           )
-          response = st.session_state.chat_session.send_message(initial_prompt)
-          bot_response = response.text
+          try:
+            response = st.session_state.chat_session.send_message(
+                initial_prompt
+            )
+            bot_response = response.text
+          except Exception as e:
+            bot_response = (
+                "세계 생성 중 API 한도 초과 오류가 발생했습니다. 잠시 후 새로고침"
+                f" 해주세요. (에러: {e})"
+            )
+
           st.session_state.messages = [{
               "role": "assistant",
               "content": f"🏰 **[모험이 시작되었습니다]**\n\n{bot_response}",
@@ -213,40 +222,58 @@ else:
 
       with st.chat_message("assistant"):
         with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
-          response = st.session_state.chat_session.send_message(user_prompt)
-          bot_response = response.text
+          try:
+            response = st.session_state.chat_session.send_message(user_prompt)
+            bot_response = response.text
 
-          # JSON 데이터를 파싱하여 사이드바 상태값만 안전하게 갱신 (st.rerun 제거됨)
-          match = re.search(
-              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
-          )
-          if match:
-            try:
-              updated_json_str = match.group(1)
-              updated_data = json.loads(updated_json_str)
-              for k, v in updated_data.items():
-                if k in st.session_state.stats:
-                  st.session_state.stats[k] = v
-            except Exception as e:
-              pass
+            # JSON 데이터를 파싱하여 사이드바 상태값만 안전하게 갱신
+            match = re.search(
+                r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
+            )
+            if match:
+              try:
+                updated_json_str = match.group(1)
+                updated_data = json.loads(updated_json_str)
+                for k, v in updated_data.items():
+                  if k in st.session_state.stats:
+                    st.session_state.stats[k] = v
+              except Exception as e:
+                pass
 
-          clean_bot_response = re.sub(
-              r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
-              "",
-              bot_response,
-              flags=re.DOTALL,
-          ).strip()
-          st.markdown(clean_bot_response)
+            clean_bot_response = re.sub(
+                r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
+                "",
+                bot_response,
+                flags=re.DOTALL,
+            ).strip()
+            st.markdown(clean_bot_response)
 
-      st.session_state.messages.append(
-          {"role": "assistant", "content": bot_response}
-      )
+            st.session_state.messages.append(
+                {"role": "assistant", "content": bot_response}
+            )
 
-      with open(SAVE_FILE, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.messages, f, ensure_ascii=False)
+            with open(SAVE_FILE, "w", encoding="utf-8") as f:
+              json.dump(st.session_state.messages, f, ensure_ascii=False)
+
+          except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+              warning_msg = (
+                  "⚠️ **[API 사용량 한도 초과]** 무료 티어 요청 제한에"
+                  " 도달했습니다. 안내된 대기 시간(약 15~30초) 후 다시"
+                  " 시도해 주세요!"
+              )
+              st.warning(warning_msg)
+              st.session_state.messages.append({
+                  "role": "assistant",
+                  "content": warning_msg,
+              })
+            else:
+              err_msg = f"❌ 오류가 발생했습니다: {e}"
+              st.error(err_msg)
 
   except Exception as e:
     st.error(
-        f"❌ 오류가 발생했습니다. API 키가 올바른지 확인해 주세요. (상세 에러:"
+        f"❌ 초기화 중 오류가 발생했습니다. API 키를 확인해 주세요. (상세 에러:"
         f" {e})"
     )
