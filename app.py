@@ -14,8 +14,8 @@ st.set_page_config(
 )
 st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (사이드바 실시간 연동 버전)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, 스탯 변경 시 좌측 사이드바가"
-    " 즉시 실시간으로 업데이트되는 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, 스탯 변경 및 모델 변경 테스트가"
+    " 가능한 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -32,7 +32,7 @@ if "stats" not in st.session_state:
       "skills": ["기본 찌르기", "약한 응급 치료"],
   }
 
-# ⚙️ [좌측 사이드바: 최신 스탯이 실시간 반영되는 상태창]
+# ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택창]
 st.sidebar.header("⚙️ 게임 설정 및 관리")
 
 api_key_input = st.sidebar.text_input(
@@ -40,6 +40,16 @@ api_key_input = st.sidebar.text_input(
     value=DEFAULT_API_KEY,
     type="password",
     help="Google AI Studio에서 발급받은 API 키를 입력하세요.",
+)
+
+# 📌 사이드바에 모델명을 직접 입력하거나 변경할 수 있는 입력 상자 추가
+selected_model = st.sidebar.text_input(
+    "사용할 Gemini 모델명 입력",
+    value="gemini-3.7-flash",
+    help=(
+        "예: gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash-lite 등"
+        " 원하는 모델명을 입력하세요."
+    ),
 )
 
 st.sidebar.markdown("---")
@@ -110,11 +120,14 @@ if not api_key_input:
   st.warning("⚠️ 좌측 사이드바에 **Google Gemini API 키**를 입력해 주세요.")
 else:
   try:
+    # 📌 클라이언트가 없거나, 모델이 변경되었을 경우 채팅 세션을 새롭게 생성
     if (
         "client" not in st.session_state
         or "chat_session" not in st.session_state
+        or st.session_state.get("current_model") != selected_model
     ):
       st.session_state.client = genai.Client(api_key=api_key_input)
+      st.session_state.current_model = selected_model
 
       current_stats = st.session_state.stats
       system_instruction = (
@@ -146,15 +159,17 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
-        # 📌 구글 API 서버가 요구하는 공식 표준 모델 gemini-3.6-flash 적용
+        # 📌 사이드바에서 입력한 모델명을 동적으로 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.6-flash",
+            model=selected_model,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
             ),
         )
-        with st.spinner("새로운 게임 세계를 생성하는 중입니다..."):
+        with st.spinner(
+            f"[{selected_model}] 모델로 새로운 게임 세계를 생성하는 중입니다..."
+        ):
           initial_prompt = (
               "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 먼저 플레이어에게 "
               "어떤 직업(전사, 마법사, 성직자, 궁수, 도적 중 택1)을 선택할 것인지 묻고, "
@@ -167,13 +182,12 @@ else:
             bot_response = response.text
           except Exception as e:
             bot_response = (
-                "세계 생성 중 API 에러가 발생했습니다. 잠시 후 새로고침"
-                f" 해주세요. (에러: {e})"
+                f"세계 생성 중 API 에러가 발생했습니다. (선택 모델: {selected_model})\n에러: {e}"
             )
 
           st.session_state.messages = [{
               "role": "assistant",
-              "content": f"🏰 **[모험이 시작되었습니다]**\n\n{bot_response}",
+              "content": f"🏰 **[모험이 시작되었습니다 ({selected_model})]**\n\n{bot_response}",
           }]
 
           with open(SAVE_FILE, "w", encoding="utf-8") as f:
@@ -193,9 +207,9 @@ else:
                 )
             )
 
-        # 📌 기존 히스토리 로드 시에도 gemini-3.6-flash 모델 적용
+        # 📌 기존 히스토리 로드 시에도 사이드바의 모델명 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.6-flash",
+            model=selected_model,
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -271,8 +285,8 @@ else:
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
               warning_msg = (
                   "⚠️ **[API 사용량 한도 초과]** 무료 티어 요청 제한에"
-                  " 도달했습니다. 안내된 대기 시간(약 15~30초) 후 다시"
-                  " 시도해 주세요!"
+                  f" 도달했습니다. (모델: {selected_model})\n"
+                  "안내된 대기 시간(약 15~30초) 후 다시 시도해 주세요!"
               )
               st.warning(warning_msg)
               st.session_state.messages.append({
