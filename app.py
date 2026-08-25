@@ -13,10 +13,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (스탯 완벽 동기화 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (전투 확인 단계 연동 버전)")
 st.markdown(
-    "로컬 전투와 스토리 간 스탯 불일치 문제를 해결하여 체력과 마나가 실시간으로"
-    " 정확히 연동되는 텍스트 RPG 공간입니다."
+    "몬스터 조우 시 확인 단계를 거쳐 안전하게 전투를 시작할 수 있는 텍스트 RPG"
+    " 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화]
@@ -35,7 +35,11 @@ if "stats" not in st.session_state:
 
 if "in_combat" not in st.session_state:
   st.session_state.in_combat = False
+  st.session_state.pending_combat = (
+      False  # 📌 전투 전 확인 단계 상태 변수 추가
+  )
   st.session_state.enemy = None
+  st.session_state.pending_enemy = None
   st.session_state.combat_log = []
 
 # ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택 드롭다운]
@@ -209,6 +213,7 @@ def process_combat_action(action):
         f"💥 **{enemy['name']}**의 반격! 내게 {enemy_dmg}의 피해를 입혔습니다."
     )
 
+  # 승리 판정
   if enemy["hp"] <= 0:
     reward_gold = random.randint(5, 15)
     player["gold"] += reward_gold
@@ -217,21 +222,62 @@ def process_combat_action(action):
         f" {reward_gold} 골드 획득)"
     )
     st.session_state.in_combat = False
-    # 승리 시점의 최신 스탯을 AI 기록에 주입
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": (
-            f"⚔️ **[전투 결과]** 플레이어가 승리하여 {reward_gold} 골드를"
-            f" 획득했습니다. (현재 HP: {player['hp']}/{player['max_hp']}, MP:"
-            f" {player['mp']}/{player['max_mp']})"
-        ),
-    })
+
+    if "chat_session" in st.session_state:
+      try:
+        post_prompt = (
+            f"전투에서 승리했습니다! 상대는 '{enemy['name']}'였으며, {reward_gold} 골드를 획득했습니다. "
+            f"전투가 끝난 직후의 상황을 생생하게 묘사하고, 플레이어가 다음에 고를 수 있는 선택지 2~3가지를 함께 제시해 주세요."
+        )
+        response = st.session_state.chat_session.send_message(post_prompt)
+        ai_response = response.text
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                f"⚔️ **[전투 승리]** {enemy['name']}을(를) 물리쳤습니다! (보상:"
+                f" {reward_gold} 골드)\n\n{ai_response}"
+            ),
+        })
+      except Exception as e:
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                f"⚔️ **[전투 승리]** {enemy['name']}을(를) 물리쳤습니다! (보상:"
+                f" {reward_gold} 골드)\n\n(다음 스토리 생성 중 에러 발생: {e})"
+            ),
+        })
+
+  # 패배 판정
   elif player["hp"] <= 0:
     logs.append(
         "💀 **[치명패]** 체력이 모두 소모되어 쓰러졌습니다... 암흑이 찾아옵니다."
     )
     st.session_state.in_combat = False
     player["hp"] = 10
+
+    if "chat_session" in st.session_state:
+      try:
+        post_prompt = (
+            "전투에서 패배하여 쓰러졌으나 간신히 목숨을 건졌습니다. 플레이어가 정신을 차린 후의 "
+            "처참한 상황을 묘사하고, 앞으로 어떻게 할 것인지 선택지 2~3가지를 제시해 주세요."
+        )
+        response = st.session_state.chat_session.send_message(post_prompt)
+        ai_response = response.text
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "💀 **[치명패]** 적에게 패배하여 정신을 잃었습니다...\n\n"
+                f"{ai_response}"
+            ),
+        })
+      except Exception as e:
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "💀 **[치명패]** 적에게 패배하여 정신을 잃었습니다...\n\n(스토리"
+                f" 생성 중 에러 발생: {e})"
+            ),
+        })
 
   st.session_state.combat_log = logs
 
@@ -256,7 +302,7 @@ else:
           "예상치 못한 불행, 자원 부족, 위기 상황이 자주 찾아오며, 때로는 극적인 행운이 찾아옵니다. "
           "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
           "매 프롬프트마다 전송되는 [현재 내 상태 정보]를 최우선 기준으로 삼아 스토리를 전개하고, 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
-          '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요.\n'
+          '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 전투 조우 신호를 보내세요.\n'
           "주의사항: 답변 본문에는 [상태: ...] 같은 텍스트 상태창을 절대 출력하지 마십시오. "
           "스탯 변동이 발생할 경우 반드시 답변 맨 마지막 줄에 단독으로 "
           '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자, "equipment": {"무기": "...", "갑옷": "..."}, "inventory": ["..."], "skills": ["..."]}] '
@@ -330,8 +376,26 @@ else:
             ),
         )
 
-    # ================= [화면 분기: 전투 중 vs 평상시 스토리] =================
-    if st.session_state.in_combat:
+    # ================= [화면 분기: 전투 대기(확인) vs 전투 중 vs 평상시 스토리] =================
+    if st.session_state.pending_combat:
+      # ⚠️ [전투 시작 전 확인 화면]
+      enemy = st.session_state.pending_enemy
+      st.warning(
+          f"⚠️ **[전투가 임박했습니다!]**\n\n상대: **{enemy['name']}**"
+          " 조우!\n준비가 되었다면 아래 확인 버튼을 눌러 전투를 시작하세요."
+      )
+
+      if st.button("⚔️ 확인 (전투 시작)", use_container_width=True):
+        st.session_state.in_combat = True
+        st.session_state.enemy = st.session_state.pending_enemy
+        st.session_state.pending_combat = False
+        st.session_state.combat_log = [
+            f"🚨 **{st.session_state.enemy['name']}**과의 긴장되는 전투가"
+            " 시작되었습니다!"
+        ]
+        st.rerun()
+
+    elif st.session_state.in_combat:
       # ⚔️ [로컬 전투 UI - API 호출 없음]
       enemy = st.session_state.enemy
       st.error(
@@ -401,7 +465,6 @@ else:
             st.markdown(message["content"])
 
       if user_prompt := st.chat_input("어떤 행동을 하시겠습니까?"):
-        # 화면에는 사용자가 입력한 순수 텍스트를 기록
         st.session_state.messages.append(
             {"role": "user", "content": user_prompt}
         )
@@ -411,7 +474,6 @@ else:
         with st.chat_message("assistant"):
           with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
             try:
-              # 📌 핵심 동기화: AI에게 메시지를 보낼 때 현재 내 실제 스탯(HP, MP 등)을 매번 함께 전송
               current_stats = st.session_state.stats
               augmented_prompt = (
                   f"[현재 내 상태 정보 - HP: {current_stats['hp']}/{current_stats['max_hp']}, "
@@ -426,24 +488,20 @@ else:
               )
               bot_response = response.text
 
-              # 1. 전투 시작 트리거 감지 ([START_COMBAT])
+              # 1. 전투 시작 트리거 감지 ([START_COMBAT]) -> 즉시 전투로 안 가고 대기(Pending) 상태로 전환
               combat_match = re.search(
                   r"\[START_COMBAT:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
               )
               if combat_match:
                 try:
                   combat_data = json.loads(combat_match.group(1))
-                  st.session_state.in_combat = True
-                  st.session_state.enemy = {
+                  st.session_state.pending_combat = True
+                  st.session_state.pending_enemy = {
                       "name": combat_data.get("name", "지하 쥐"),
                       "hp": combat_data.get("hp", 30),
                       "max_hp": combat_data.get("hp", 30),
                       "atk": combat_data.get("atk", 8),
                   }
-                  st.session_state.combat_log = [
-                      f"🚨 **{st.session_state.enemy['name']}**과의 긴장되는"
-                      " 전투가 시작되었습니다!"
-                  ]
                 except Exception:
                   pass
 
