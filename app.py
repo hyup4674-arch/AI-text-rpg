@@ -144,8 +144,9 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
+        # 📌 일일 무료 요청 제한(RPD)이 가장 높은 gemini-3-flash 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2-flash",
+            model="gemini-3-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -190,8 +191,9 @@ else:
                 )
             )
 
+        # 📌 기존 히스토리 로드 시에도 gemini-3-flash 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2-flash",
+            model="gemini-3-flash",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
