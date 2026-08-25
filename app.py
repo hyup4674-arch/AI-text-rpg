@@ -377,7 +377,6 @@ else:
             if combat_match:
               try:
                 combat_data = json.loads(combat_match.group(1))
-                # 파이썬에서 자동 전투 실행 (실제 HP, MP, 골드, 인벤토리 변경 반영)
                 combat_log_text, victory, reward_gold = run_automatic_combat(
                     combat_data
                 )
@@ -390,7 +389,6 @@ else:
                     flags=re.DOTALL,
                 ).strip()
 
-                # 💡 전투 직후 실제 변경된 파이썬 스탯을 AI에게 전달하여 문맥 동기화
                 updated_stats = st.session_state.stats
                 post_prompt = (
                     f"전투가 종료되었습니다. (결과: {'승리' if victory else '패배'}, 보상 골드: {reward_gold}). "
@@ -409,7 +407,6 @@ else:
                     flags=re.DOTALL,
                 ).strip()
 
-                # 💡 AI가 기존 스탯으로 덮어쓰지 못하도록, 파이썬이 계산한 정확한 최종 스탯을 [JSON_UPDATE]로 강제 주입
                 authoritative_json = json.dumps(
                     {
                         "hp": updated_stats["hp"],
@@ -432,14 +429,15 @@ else:
               except Exception as e:
                 final_output += f"\n\n(자동 전투 처리 중 오류 발생: {e})"
 
-            # 2. 스탯 업데이트 감지 ([JSON_UPDATE])
-            match = re.search(
+            # 2. 스탯 업데이트 감지 ([JSON_UPDATE]) - 💡 가장 마지막(맨 아래)에 위치한 JSON을 최우선으로 반영하도록 수정
+            matches = re.findall(
                 r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL
             )
             stats_updated = False
-            if match:
+            if matches:
               try:
-                updated_data = json.loads(match.group(1))
+                # matches[-1]: 맨 마지막(authoritative_json 또는 최신) 데이터 적용
+                updated_data = json.loads(matches[-1])
                 for k, v in updated_data.items():
                   if k in st.session_state.stats:
                     if st.session_state.stats[k] != v:
