@@ -12,10 +12,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (예외 처리 및 최적화 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (사이드바 실시간 연동 버전)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, API 한도 초과(429 에러) 시 앱이"
-    " 튕기지 않도록 예외 처리가 적용된 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, 스탯 변경 시 좌측 사이드바가"
+    " 즉시 실시간으로 업데이트되는 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -32,7 +32,7 @@ if "stats" not in st.session_state:
       "skills": ["기본 찌르기", "약한 응급 치료"],
   }
 
-# ⚙️ [좌측 사이드바: 게임 설정, 상태창, 백업 관리 통합]
+# ⚙️ [좌측 사이드바: 최신 스탯이 실시간 반영되는 상태창]
 st.sidebar.header("⚙️ 게임 설정 및 관리")
 
 api_key_input = st.sidebar.text_input(
@@ -226,17 +226,20 @@ else:
             response = st.session_state.chat_session.send_message(user_prompt)
             bot_response = response.text
 
-            # JSON 데이터를 파싱하여 사이드바 상태값만 안전하게 갱신
+            # JSON 데이터를 파싱하여 사이드바 상태값 갱신 및 변경 감지 시 즉시 리렌더링
             match = re.search(
                 r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
             )
+            stats_updated = False
             if match:
               try:
                 updated_json_str = match.group(1)
                 updated_data = json.loads(updated_json_str)
                 for k, v in updated_data.items():
                   if k in st.session_state.stats:
-                    st.session_state.stats[k] = v
+                    if st.session_state.stats[k] != v:
+                      st.session_state.stats[k] = v
+                      stats_updated = True
               except Exception as e:
                 pass
 
@@ -254,6 +257,10 @@ else:
 
             with open(SAVE_FILE, "w", encoding="utf-8") as f:
               json.dump(st.session_state.messages, f, ensure_ascii=False)
+
+            # 스탯에 변화가 생겼다면 즉시 화면을 재실행하여 좌측 사이드바 상태창을 갱신
+            if stats_updated:
+              st.rerun()
 
           except Exception as e:
             error_str = str(e)
