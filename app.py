@@ -118,7 +118,9 @@ else:
 
       current_stats = st.session_state.stats
       system_instruction = (
-          "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. 난이도는 높은편 이며 예상치 못한 불행이 찾아오기도 하고 행운이 찾아오기도 합니다. 직업은 전사,마법사,성직자,궁수,도적 으로 전문적인 스킬을 배울수 있습니다"
+          "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
+          "난이도는 높은 편이며, 예상치 못한 불행이 찾아오기도 하고 때로는 뜻밖의 행운이 찾아오기도 합니다. "
+          "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
           "플레이어가 '1', '2' 같은 번호 선택지나 자유로운 텍스트로 행동을 입력하면, 그 선택에 따라 즉시 스토리를 다음 단계로 전개하고 흥미진진한 상황과 선택지를 묘사하세요.\n"
           "현재 플레이어의 상태 정보:\n"
           f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
@@ -144,9 +146,9 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
-        # 📌 일일 무료 요청 제한(RPD)이 가장 높은 gemini-3-flash 모델 적용
+        # 📌 안정적인 무료 Flash 모델(gemini-2.5-flash) 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3-flash",
+            model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -154,9 +156,9 @@ else:
         )
         with st.spinner("새로운 게임 세계를 생성하는 중입니다..."):
           initial_prompt = (
-              "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 게임을"
-              " 시작해 주세요. (플레이어가 고를 수 있는 선택지도 2~3가지 함께"
-              " 제시해 주세요)"
+              "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 먼저 플레이어에게 "
+              "어떤 직업(전사, 마법사, 성직자, 궁수, 도적 중 택1)을 선택할 것인지 묻고, "
+              "앞으로 펼쳐질 고난도 모험의 서막을 열어주세요. (선택지 5가지를 함께 제시해 주세요)"
           )
           try:
             response = st.session_state.chat_session.send_message(
@@ -191,9 +193,8 @@ else:
                 )
             )
 
-        # 📌 기존 히스토리 로드 시에도 gemini-3-flash 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3-flash",
+            model="gemini-2.5-flash",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
