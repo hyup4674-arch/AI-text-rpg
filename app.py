@@ -145,7 +145,7 @@ else:
 
       if not st.session_state.messages:
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2.0-flash",
+            model="gemini-2-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -191,7 +191,7 @@ else:
             )
 
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-2.0-flash",
+            model="gemini-2-flash",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
