@@ -54,8 +54,8 @@ default_models = [
     "gemini-3.5-flash",
     "gemini-3.6-flash",
     "gemini-3.7-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash",
 ]
 
 available_models = default_models
@@ -237,7 +237,7 @@ else:
       current_stats = st.session_state.stats
       system_instruction = (
           "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
-          "난이도는 높은 편이며, 예상치 못한 불행이 찾아오기도 하고 때로는 뜻밖의 행운이 찾아오기도 합니다. "
+          " 주인공은 처음에는 약하지만 시간이 지나면서 점점 성장합니다. 적들과 주인공 ,아군의 밸런스가 잘 맞게 구성해야합니다. 예상치 못한 불행이 찾아오기도 하고 때로는 뜻밖의 행운이 찾아오기도 합니다. "
           "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
           "플레이어가 행동을 입력하면 스토리를 전개하세요. 만약 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
           '[START_COMBAT: {"name": "몬스터이름", "hp": 50, "atk": 15}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요.\n'
