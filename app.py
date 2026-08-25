@@ -13,10 +13,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (스킬 전투 시스템 연동 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (스탯 완벽 동기화 버전)")
 st.markdown(
-    "스토리 진행과 로컬 파이썬 턴제 전투(스킬 시스템 포함)가 결합된 텍스트 RPG"
-    " 공간입니다."
+    "로컬 전투와 스토리 간 스탯 불일치 문제를 해결하여 체력과 마나가 실시간으로"
+    " 정확히 연동되는 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화]
@@ -149,7 +149,7 @@ if st.sidebar.button("🔄 새 게임 시작 (초기화)"):
 st.sidebar.markdown("---")
 
 
-# ⚔️ [로컬 파이썬 전투 처리 함수 (스킬 및 MP 소모 로직 포함)]
+# ⚔️ [로컬 파이썬 전투 처리 함수]
 def process_combat_action(action):
   player = st.session_state.stats
   enemy = st.session_state.enemy
@@ -157,7 +157,6 @@ def process_combat_action(action):
 
   skip_counter_attack = False
 
-  # 플레이어 턴 행동 처리
   if action == "공격":
     dmg = random.randint(6, 14)
     enemy["hp"] = max(0, enemy["hp"] - dmg)
@@ -171,10 +170,10 @@ def process_combat_action(action):
     if player["mp"] < mp_cost:
       logs.append("❌ 마나(MP)가 부족하여 기술을 사용할 수 없습니다!")
       st.session_state.combat_log = logs
-      return  # 마나 부족 시 턴 소모 안 함
+      return
     else:
       player["mp"] -= mp_cost
-      dmg = random.randint(18, 30)  # 스킬은 강력한 데미지
+      dmg = random.randint(18, 30)
       enemy["hp"] = max(0, enemy["hp"] - dmg)
       logs.append(
           f"✨ 기술 [{skill_name}] 발동! **{enemy['name']}**에게 강력한"
@@ -200,7 +199,6 @@ def process_combat_action(action):
     else:
       logs.append("❌ 인벤토리에 체력 포션이 없습니다!")
 
-  # 적의 반격 턴 (적이 살아있고, 회피 성공으로 스킵되지 않은 경우)
   if enemy["hp"] > 0 and not skip_counter_attack:
     enemy_dmg = random.randint(5, 12)
     if action == "방어/블럭":
@@ -211,7 +209,6 @@ def process_combat_action(action):
         f"💥 **{enemy['name']}**의 반격! 내게 {enemy_dmg}의 피해를 입혔습니다."
     )
 
-  # 승리 / 패배 판정
   if enemy["hp"] <= 0:
     reward_gold = random.randint(5, 15)
     player["gold"] += reward_gold
@@ -220,11 +217,13 @@ def process_combat_action(action):
         f" {reward_gold} 골드 획득)"
     )
     st.session_state.in_combat = False
+    # 승리 시점의 최신 스탯을 AI 기록에 주입
     st.session_state.messages.append({
         "role": "assistant",
         "content": (
             f"⚔️ **[전투 결과]** 플레이어가 승리하여 {reward_gold} 골드를"
-            " 획득하고 모험을 재개합니다."
+            f" 획득했습니다. (현재 HP: {player['hp']}/{player['max_hp']}, MP:"
+            f" {player['mp']}/{player['max_mp']})"
         ),
     })
   elif player["hp"] <= 0:
@@ -250,22 +249,14 @@ else:
       st.session_state.client = genai.Client(api_key=api_key_input)
       st.session_state.current_model = selected_model
 
-      current_stats = st.session_state.stats
       system_instruction = (
           "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
           "주인공은 현재 초라하고 매우 약한 상태(Lv.1, 녹슨 단검 소지)에서 시작합니다. "
           "절대로 플레이어를 과도하게 띄워주거나 쉽게 이기게 만들지 말고, 고난도 생존의 재미를 느낄 수 있도록 밸런스를 엄격하게 유지하세요. "
           "예상치 못한 불행, 자원 부족, 위기 상황이 자주 찾아오며, 때로는 극적인 행운이 찾아옵니다. "
           "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
-          "플레이어가 행동을 입력하면 스토리를 전개하세요. 만약 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
+          "매 프롬프트마다 전송되는 [현재 내 상태 정보]를 최우선 기준으로 삼아 스토리를 전개하고, 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
           '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요.\n'
-          "현재 플레이어 상태 정보:\n"
-          f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
-          f"- MP: {current_stats['mp']}/{current_stats['max_mp']}\n"
-          f"- 골드: {current_stats['gold']}, 레벨: {current_stats['level']}\n"
-          f"- 장비: {json.dumps(current_stats['equipment'], ensure_ascii=False)}\n"
-          f"- 인벤토리: {json.dumps(current_stats['inventory'], ensure_ascii=False)}\n"
-          f"- 기술: {json.dumps(current_stats['skills'], ensure_ascii=False)}\n\n"
           "주의사항: 답변 본문에는 [상태: ...] 같은 텍스트 상태창을 절대 출력하지 마십시오. "
           "스탯 변동이 발생할 경우 반드시 답변 맨 마지막 줄에 단독으로 "
           '[JSON_UPDATE: {"hp": 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "gold": 숫자, "level": 숫자, "equipment": {"무기": "...", "갑옷": "..."}, "inventory": ["..."], "skills": ["..."]}] '
@@ -365,7 +356,7 @@ else:
 
       st.markdown("---")
 
-      # ✨ 전문 기술(스킬) 선택 영역 추가
+      # ✨ 전문 기술(스킬) 선택 영역
       st.markdown("##### ✨ 전문 기술 사용 (MP 8 소모)")
       available_skills = stats.get("skills", [])
       if available_skills:
@@ -410,6 +401,7 @@ else:
             st.markdown(message["content"])
 
       if user_prompt := st.chat_input("어떤 행동을 하시겠습니까?"):
+        # 화면에는 사용자가 입력한 순수 텍스트를 기록
         st.session_state.messages.append(
             {"role": "user", "content": user_prompt}
         )
@@ -419,7 +411,19 @@ else:
         with st.chat_message("assistant"):
           with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
             try:
-              response = st.session_state.chat_session.send_message(user_prompt)
+              # 📌 핵심 동기화: AI에게 메시지를 보낼 때 현재 내 실제 스탯(HP, MP 등)을 매번 함께 전송
+              current_stats = st.session_state.stats
+              augmented_prompt = (
+                  f"[현재 내 상태 정보 - HP: {current_stats['hp']}/{current_stats['max_hp']}, "
+                  f"MP: {current_stats['mp']}/{current_stats['max_mp']}, "
+                  f"골드: {current_stats['gold']}G, 레벨: {current_stats['level']}, "
+                  f"인벤토리: {json.dumps(current_stats['inventory'], ensure_ascii=False)}]\n"
+                  f"플레이어 행동: {user_prompt}"
+              )
+
+              response = st.session_state.chat_session.send_message(
+                  augmented_prompt
+              )
               bot_response = response.text
 
               # 1. 전투 시작 트리거 감지 ([START_COMBAT])
