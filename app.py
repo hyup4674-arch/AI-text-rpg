@@ -12,10 +12,10 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (최적화 버전)")
 st.markdown(
-    "Google Gemini API와 Streamlit을 연동하여, 선택지에 따라 스토리가"
-    " 진행되며 좌측 사이드바 상태창이 실시간 연동되는 텍스트 RPG 공간입니다."
+    "Google Gemini API와 Streamlit을 연동하여, 불필요한 중복 실행을 없애고"
+    " API 할당량을 아끼도록 최적화된 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -32,7 +32,7 @@ if "stats" not in st.session_state:
       "skills": ["기본 찌르기", "약한 응급 치료"],
   }
 
-# ⚙️ [좌측 사이드바: 게임 설정, 상태창, 백업 관리 통합]
+# ⚙️ [좌측 사이드바: 상태창은 최신 스탯을 반영하여 자동 렌더링됨]
 st.sidebar.header("⚙️ 게임 설정 및 관리")
 
 api_key_input = st.sidebar.text_input(
@@ -105,7 +105,7 @@ if st.sidebar.button("🔄 새 게임 시작 (초기화)"):
 
 st.sidebar.markdown("---")
 
-# 🖥️ [메인 화면: 채팅 영역 전용 레이아웃]
+# 🖥️ [메인 화면: 채팅 영역]
 if not api_key_input:
   st.warning("⚠️ 좌측 사이드바에 **Google Gemini API 키**를 입력해 주세요.")
 else:
@@ -190,7 +190,7 @@ else:
             ),
         )
 
-    # 대화 기록 렌더링 (출력 시 [JSON_UPDATE] 태그는 숨김 처리)
+    # 대화 기록 렌더링 ([JSON_UPDATE] 태그는 숨김 처리)
     for message in st.session_state.messages:
       with st.chat_message(message["role"]):
         if message["role"] == "assistant":
@@ -216,7 +216,7 @@ else:
           response = st.session_state.chat_session.send_message(user_prompt)
           bot_response = response.text
 
-          # JSON 데이터를 파싱하여 사이드바 상태창 업데이트
+          # JSON 데이터를 파싱하여 사이드바 상태값만 안전하게 갱신 (st.rerun 제거됨)
           match = re.search(
               r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL
           )
@@ -230,7 +230,6 @@ else:
             except Exception as e:
               pass
 
-          # 채팅창에는 [JSON_UPDATE] 태그를 제외한 순수 스토리만 렌더링
           clean_bot_response = re.sub(
               r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
               "",
@@ -245,9 +244,6 @@ else:
 
       with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(st.session_state.messages, f, ensure_ascii=False)
-
-      # 상태 업데이트를 즉시 반영하기 위해 화면 재실행
-      st.rerun()
 
   except Exception as e:
     st.error(
