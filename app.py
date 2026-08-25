@@ -146,9 +146,9 @@ else:
       st.session_state.messages = loaded_messages
 
       if not st.session_state.messages:
-        # 📌 일일 무료 한도가 가장 높은 gemini-3.5-flash-lite 모델 적용
+        # 📌 구글 API 서버가 요구하는 공식 표준 모델 gemini-3.6-flash 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.5-flash-lite",
+            model="gemini-3.6-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=0.8,
@@ -167,7 +167,7 @@ else:
             bot_response = response.text
           except Exception as e:
             bot_response = (
-                "세계 생성 중 API 한도 초과 오류가 발생했습니다. 잠시 후 새로고침"
+                "세계 생성 중 API 에러가 발생했습니다. 잠시 후 새로고침"
                 f" 해주세요. (에러: {e})"
             )
 
@@ -193,9 +193,9 @@ else:
                 )
             )
 
-        # 📌 기존 히스토리 로드 시에도 gemini-3.5-flash-lite 모델 적용
+        # 📌 기존 히스토리 로드 시에도 gemini-3.6-flash 모델 적용
         st.session_state.chat_session = st.session_state.client.chats.create(
-            model="gemini-3.5-flash-lite",
+            model="gemini-3.6-flash",
             history=api_history if api_history else None,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
