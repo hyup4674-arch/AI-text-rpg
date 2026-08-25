@@ -13,24 +13,24 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (로컬 전투 시스템 연동 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (고난도 성장형 밸런스 버전)")
 st.markdown(
-    "Google Gemini API(스토리 진행)와 로컬 파이썬 전투 엔진(다이나믹 턴제"
-    " 전투)이 결합된 텍스트 RPG 공간입니다."
+    "처음에는 나약한 상태로 시작하여 고난을 극복하며 성장하는 정통 하이브리드"
+    " 텍스트 RPG 공간입니다."
 )
 
-# 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화]
+# 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화 (초기 능력치 하향 조정)]
 if "stats" not in st.session_state:
   st.session_state.stats = {
-      "hp": 100,
-      "max_hp": 100,
-      "mp": 50,
-      "max_mp": 50,
-      "gold": 50,
+      "hp": 50,
+      "max_hp": 50,
+      "mp": 20,
+      "max_mp": 20,
+      "gold": 10,
       "level": 1,
-      "equipment": {"무기": "낡은 단검", "갑옷": "누더기 옷", "장신구": "없음"},
-      "inventory": ["낡은 단검", "체력 포션 (소)", "체력 포션 (소)"],
-      "skills": ["기본 찌르기", "약한 응급 치료"],
+      "equipment": {"무기": "녹슨 단검", "갑옷": "누더기 옷", "장신구": "없음"},
+      "inventory": ["녹슨 단검", "체력 포션 (소)"],
+      "skills": ["기본 찌르기"],
   }
 
 if "in_combat" not in st.session_state:
@@ -149,27 +149,27 @@ if st.sidebar.button("🔄 새 게임 시작 (초기화)"):
 st.sidebar.markdown("---")
 
 
-# ⚔️ [로컬 파이썬 전투 처리 함수]
+# ⚔️ [로컬 파이썬 전투 처리 함수 (초반 밸런스형 수치 적용)]
 def process_combat_action(action):
   player = st.session_state.stats
   enemy = st.session_state.enemy
   logs = st.session_state.combat_log
 
-  # 플레이어 턴 행동 처리
+  # 플레이어 턴 행동 처리 (초반이라 공격력이 낮음)
   if action == "공격":
-    dmg = random.randint(12, 22)
+    dmg = random.randint(6, 14)
     enemy["hp"] = max(0, enemy["hp"] - dmg)
     logs.append(
         f"⚔️ 나의 공격! **{enemy['name']}**에게 {dmg}의 피해를 입혔습니다."
     )
 
   elif action == "회피 시도":
-    if random.random() < 0.55:  # 55% 확률로 회피 성공
+    if random.random() < 0.5:  # 50% 확률로 회피 성공
       logs.append("🏃 대성공! 적의 공격 궤도를 완벽히 읽고 회피했습니다!")
       st.session_state.combat_log = logs
       return  # 회피 성공 시 적의 반격 스킵
     else:
-      logs.append("💨 회피 실패! 몸을 피하지 못하고 직격탄을 허용합니다...")
+      logs.append("💨 회피 실패! 몸을 피하지 못하고 공격을 허용합니다...")
 
   elif action == "방어/블럭":
     logs.append("🛡️ 방어 태세를 취합니다! 이번 턴 받는 피해가 반으로 줄어듭니다.")
@@ -177,7 +177,7 @@ def process_combat_action(action):
   elif action == "포션 사용":
     if "체력 포션 (소)" in player["inventory"]:
       player["inventory"].remove("체력 포션 (소)")
-      heal = 40
+      heal = 25
       player["hp"] = min(player["max_hp"], player["hp"] + heal)
       logs.append(f"🧪 체력 포션을 마셔 HP가 {heal} 회복되었습니다!")
     else:
@@ -185,7 +185,7 @@ def process_combat_action(action):
 
   # 적의 반격 턴 (적이 살아있고, 회피 성공으로 스킵되지 않은 경우)
   if enemy["hp"] > 0:
-    enemy_dmg = random.randint(8, 18)
+    enemy_dmg = random.randint(5, 12)
     if action == "방어/블럭":
       enemy_dmg //= 2
 
@@ -196,14 +196,13 @@ def process_combat_action(action):
 
   # 승리 / 패배 판정
   if enemy["hp"] <= 0:
-    reward_gold = random.randint(15, 35)
+    reward_gold = random.randint(5, 15)
     player["gold"] += reward_gold
     logs.append(
         f"🎉 **[전투 승리!]** {enemy['name']}을(를) 쓰러뜨렸습니다! (보상:"
         f" {reward_gold} 골드 획득)"
     )
     st.session_state.in_combat = False
-    # AI 채팅창에도 전투 승리 상황을 조용히 기록
     st.session_state.messages.append({
         "role": "assistant",
         "content": (
@@ -213,10 +212,10 @@ def process_combat_action(action):
     })
   elif player["hp"] <= 0:
     logs.append(
-        "💀 **[치명패]** 체력이 모두 소달되어 쓰러졌습니다... 암흑이 찾아옵니다."
+        "💀 **[치명패]** 체력이 모두 소모되어 쓰러졌습니다... 암흑이 찾아옵니다."
     )
     st.session_state.in_combat = False
-    player["hp"] = 20  # 자비로운 부활 보정 (선택사항)
+    player["hp"] = 10  # 간신히 살아남은 페널티 부활
 
   st.session_state.combat_log = logs
 
@@ -237,10 +236,12 @@ else:
       current_stats = st.session_state.stats
       system_instruction = (
           "당신은 몰입감 있는 정통 판타지 텍스트 RPG의 게임 마스터(GM)입니다. "
-          " 주인공은 처음에는 약하지만 시간이 지나면서 점점 성장합니다. 적들과 주인공 ,아군의 밸런스가 잘 맞게 구성해야합니다. 예상치 못한 불행이 찾아오기도 하고 때로는 뜻밖의 행운이 찾아오기도 합니다. "
+          "주인공은 현재 초라하고 매우 약한 상태(Lv.1, 녹슨 단검 소지)에서 시작합니다. "
+          "절대로 플레이어를 과도하게 띄워주거나 쉽게 이기게 만들지 말고, 고난도 생존의 재미를 느낄 수 있도록 밸런스를 엄격하게 유지하세요. "
+          "예상치 못한 불행, 자원 부족, 위기 상황이 자주 찾아오며, 때로는 극적인 행운이 찾아옵니다. "
           "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
           "플레이어가 행동을 입력하면 스토리를 전개하세요. 만약 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
-          '[START_COMBAT: {"name": "몬스터이름", "hp": 50, "atk": 15}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요.\n'
+          '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요. (초반 적은 HP 25~35 수준으로 약하게 설정)\n'
           "현재 플레이어 상태 정보:\n"
           f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
           f"- MP: {current_stats['mp']}/{current_stats['max_mp']}\n"
@@ -276,9 +277,9 @@ else:
             f"[{selected_model}] 모델로 새로운 게임 세계를 생성하는 중입니다..."
         ):
           initial_prompt = (
-              "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 먼저 플레이어에게 "
+              "눈을 떠보니 음산한 기운이 감도는 고대 던전의 지하 감옥입니다. 몸은 쇠약하고 쥐새끼가 울부짖는 최악의 환경입니다. 먼저 플레이어에게 "
               "어떤 직업(전사, 마법사, 성직자, 궁수, 도적 중 택1)을 선택할 것인지 묻고, "
-              "앞으로 펼쳐질 고난도 모험의 서막을 열어주세요. (선택지 5가지를 함께 제시해 주세요)"
+              "앞으로 펼쳐질 고난도 생존 모험의 서막을 열어주세요. (선택지 5가지를 함께 제시해 주세요)"
           )
           try:
             response = st.session_state.chat_session.send_message(
@@ -292,7 +293,7 @@ else:
 
           st.session_state.messages = [{
               "role": "assistant",
-              "content": f"🏰 **[모험이 시작되었습니다 ({selected_model})]**\n\n{bot_response}",
+              "content": f"🏰 **[생존 모험이 시작되었습니다 ({selected_model})]**\n\n{bot_response}",
           }]
 
           with open(SAVE_FILE, "w", encoding="utf-8") as f:
@@ -326,7 +327,7 @@ else:
       # ⚔️ [로컬 전투 UI - API 호출 없음]
       enemy = st.session_state.enemy
       st.error(
-          f"⚠️ **[긴급 전투 발생!]** 상대: **{enemy['name']}** (적 체력:"
+          f"⚠️ **[긴급 생존 전투!]** 상대: **{enemy['name']}** (적 체력:"
           f" {enemy['hp']} / {enemy['max_hp']})"
       )
 
@@ -346,7 +347,7 @@ else:
 
       st.markdown("---")
       st.markdown("##### 📜 실시간 전투 로그")
-      for log in reversed(st.session_state.combat_log[-6:]):  # 최근 6개 로그 출력
+      for log in reversed(st.session_state.combat_log[-6:]):
         st.markdown(f"- {log}")
 
     else:
@@ -392,14 +393,14 @@ else:
                   combat_data = json.loads(combat_match.group(1))
                   st.session_state.in_combat = True
                   st.session_state.enemy = {
-                      "name": combat_data.get("name", "야생의 괴물"),
-                      "hp": combat_data.get("hp", 50),
-                      "max_hp": combat_data.get("hp", 50),
-                      "atk": combat_data.get("atk", 15),
+                      "name": combat_data.get("name", "지하 쥐"),
+                      "hp": combat_data.get("hp", 30),
+                      "max_hp": combat_data.get("hp", 30),
+                      "atk": combat_data.get("atk", 8),
                   }
                   st.session_state.combat_log = [
-                      f"🚨 **{st.session_state.enemy['name']}**과의 전투가"
-                      " 시작되었습니다!"
+                      f"🚨 **{st.session_state.enemy['name']}**과의 긴장되는"
+                      " 전투가 시작되었습니다!"
                   ]
                 except Exception:
                   pass
@@ -442,7 +443,6 @@ else:
               with open(SAVE_FILE, "w", encoding="utf-8") as f:
                 json.dump(st.session_state.messages, f, ensure_ascii=False)
 
-              # 전투가 시작되었거나 스탯이 변경되었다면 즉시 화면 갱신
               if combat_match or stats_updated:
                 st.rerun()
 
