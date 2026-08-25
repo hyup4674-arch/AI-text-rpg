@@ -377,31 +377,58 @@ else:
             if combat_match:
               try:
                 combat_data = json.loads(combat_match.group(1))
+                # 파이썬에서 자동 전투 실행 (실제 HP, MP, 골드, 인벤토리 변경 반영)
                 combat_log_text, victory, reward_gold = run_automatic_combat(
                     combat_data
                 )
                 combat_occurred = True
 
-                # 스토리와 전투 결과 병합
                 base_story = re.sub(
                     r"\[START_COMBAT:\s*(\{.*?\})\s*\]",
                     "",
                     bot_response,
                     flags=re.DOTALL,
                 ).strip()
-                final_output = (
-                    f"{base_story}\n\n---\n{combat_log_text}\n---"
-                )
 
-                # 전투 종료 직후의 상황을 AI에게 이어서 요청
+                # 💡 전투 직후 실제 변경된 파이썬 스탯을 AI에게 전달하여 문맥 동기화
+                updated_stats = st.session_state.stats
                 post_prompt = (
                     f"전투가 종료되었습니다. (결과: {'승리' if victory else '패배'}, 보상 골드: {reward_gold}). "
+                    f"[현재 내 실제 상태 정보 - HP: {updated_stats['hp']}/{updated_stats['max_hp']}, "
+                    f"MP: {updated_stats['mp']}/{updated_stats['max_mp']}, "
+                    f"골드: {updated_stats['gold']}G, 인벤토리: {json.dumps(updated_stats['inventory'], ensure_ascii=False)}]. "
                     "이 직후의 현장 상황을 생생하게 묘사하고, 플레이어가 다음에 고를 수 있는 선택지 2~3가지를 함께 제시해 주세요."
                 )
                 post_response = st.session_state.chat_session.send_message(
                     post_prompt
                 )
-                final_output += f"\n\n{post_response.text}"
+                post_text_clean = re.sub(
+                    r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]",
+                    "",
+                    post_response.text,
+                    flags=re.DOTALL,
+                ).strip()
+
+                # 💡 AI가 기존 스탯으로 덮어쓰지 못하도록, 파이썬이 계산한 정확한 최종 스탯을 [JSON_UPDATE]로 강제 주입
+                authoritative_json = json.dumps(
+                    {
+                        "hp": updated_stats["hp"],
+                        "max_hp": updated_stats["max_hp"],
+                        "mp": updated_stats["mp"],
+                        "max_mp": updated_stats["max_mp"],
+                        "gold": updated_stats["gold"],
+                        "level": updated_stats["level"],
+                        "equipment": updated_stats["equipment"],
+                        "inventory": updated_stats["inventory"],
+                        "skills": updated_stats["skills"],
+                    },
+                    ensure_ascii=False,
+                )
+
+                final_output = (
+                    f"{base_story}\n\n---\n{combat_log_text}\n---\n\n{post_text_clean}\n\n[JSON_UPDATE:"
+                    f" {authoritative_json}]"
+                )
               except Exception as e:
                 final_output += f"\n\n(자동 전투 처리 중 오류 발생: {e})"
 
@@ -444,7 +471,6 @@ else:
             with open(SAVE_FILE, "w", encoding="utf-8") as f:
               json.dump(st.session_state.messages, f, ensure_ascii=False)
 
-            # 💡 스탯이 변경되었거나 전투가 발생한 경우 즉시 페이지를 새로고쳐 사이드바 반영
             if combat_occurred or stats_updated:
               st.rerun()
 
