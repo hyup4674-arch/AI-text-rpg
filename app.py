@@ -13,7 +13,7 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (선택지 버튼 & 폰트 조절 연동)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터")
 st.markdown(
     "몬스터 조우 시 자동 전투가 수행되며, 모바일 환경에 최적화된 선택지 버튼 클릭으로 손쉽게 플레이할 수 있습니다."
 )
@@ -54,7 +54,7 @@ font_size = st.sidebar.slider(
     help="모바일 등 작은 화면에서 글자가 너무 작거나 클 때 조절하세요.",
 )
 
-# 🎨 [동적 CSS 주입: 선택한 글자 크기 반영]
+# 🎨 [동적 CSS 및 자동 스크롤 방지 JS 주입]
 st.markdown(
     f"""
     <style>
@@ -76,6 +76,13 @@ st.markdown(
             font-size: {font_size - 1}px !important;
         }}
     </style>
+
+    <script>
+        // Streamlit이 답변 생성 및 rerun 시 화면을 맨 아래로 강제 스크롤하는 동작 차단
+        if (window.parent && window.parent.Element) {{
+            window.parent.Element.prototype.scrollIntoView = function() {{}};
+        }}
+    </script>
     """,
     unsafe_allow_html=True,
 )
@@ -406,7 +413,6 @@ else:
         if current_choices:
             st.markdown("##### 🎯 행동 선택 (버튼을 터치하세요)")
             for idx, choice in enumerate(current_choices):
-                # 모바일 터치 편의성을 위한 풀 사이즈 버튼
                 if st.button(
                     f"👉 {choice}",
                     key=f"btn_{len(st.session_state.messages)}_{idx}",
@@ -500,7 +506,6 @@ else:
                                     ensure_ascii=False,
                                 )
 
-                                # 전투 후 선택지도 새로 추출
                                 post_choices_match = re.search(
                                     r"\[CHOICES:\s*(\[.*?\])\s*\]",
                                     post_response.text,
@@ -539,7 +544,6 @@ else:
                             except Exception:
                                 pass
 
-                        # 화면 출력용 순수 텍스트 생성
                         clean_output = clean_tags(final_output)
                         st.markdown(clean_output)
 
@@ -554,7 +558,6 @@ else:
                                 ensure_ascii=False,
                             )
 
-                        # 상태 변경 또는 전투 시 페이지 새로고침하여 버튼 및 UI 최신화
                         st.rerun()
 
                     except Exception as e:
