@@ -18,7 +18,7 @@ st.markdown(
     " 텍스트 RPG 공간입니다."
 )
 
-# 2. 사이드바 - 설정 및 세이브 백업 관리
+# 사이드바 설정
 st.sidebar.header("⚙️ 게임 설정 및 백업")
 
 api_key_input = st.sidebar.text_input(
@@ -31,7 +31,6 @@ api_key_input = st.sidebar.text_input(
 st.sidebar.markdown("---")
 st.sidebar.subheader("💾 세이브 파일 관리")
 
-# [기능 1] 현재 세이브 파일을 스마트폰/PC로 다운로드하는 버튼
 if os.path.exists(SAVE_FILE):
   with open(SAVE_FILE, "r", encoding="utf-8") as f:
     save_data_str = f.read()
@@ -40,13 +39,9 @@ if os.path.exists(SAVE_FILE):
       data=save_data_str,
       file_name="rpg_save.json",
       mime="application/json",
-      help=(
-          "게임을 마치기 전 이 버튼을 눌러 스마트폰에 세이브 파일을"
-          " 저장하세요!"
-      ),
+      help="게임을 마치기 전 이 버튼을 눌러 세이브 파일을 저장하세요!",
   )
 
-# [기능 2] 백업해둔 세이브 파일을 업로드해서 불러오는 기능
 uploaded_save = st.sidebar.file_uploader(
     "📂 백업한 세이브 파일 불러오기",
     type=["json"],
@@ -55,7 +50,6 @@ uploaded_save = st.sidebar.file_uploader(
 
 if uploaded_save is not None:
   try:
-    # 업로드된 파일 내용을 읽어서 현재 세이브 파일로 덮어쓰기
     uploaded_bytes = uploaded_save.read()
     with open(SAVE_FILE, "wb") as f:
       f.write(uploaded_bytes)
@@ -64,7 +58,6 @@ if uploaded_save is not None:
   except Exception as e:
     st.sidebar.error(f"세이브 로드 실패: {e}")
 
-# 새 게임 시작 버튼
 if st.sidebar.button("🔄 새 게임 시작 (초기화)"):
   if os.path.exists(SAVE_FILE):
     os.remove(SAVE_FILE)
@@ -78,7 +71,6 @@ if not api_key_input:
   st.warning("⚠️ 사이드바에 **Gemini API 키**를 입력해 주세요.")
 else:
   try:
-    # 3. 클라이언트 및 세션 초기화
     if (
         "client" not in st.session_state
         or "chat_session" not in st.session_state
@@ -147,12 +139,10 @@ else:
             ),
         )
 
-    # 4. 대화 기록 출력
     for message in st.session_state.messages:
       with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-    # 5. 사용자 입력 처리 및 자동 저장
     if user_prompt := st.chat_input("어떤 행동을 하시겠습니까?"):
       st.session_state.messages.append(
           {"role": "user", "content": user_prompt}
@@ -170,5 +160,11 @@ else:
           {"role": "assistant", "content": bot_response}
       )
 
-      with open(SAVE_FILE, "w", encoding="utf-8") 방식로 as f:
-        pass  # syntax fix below for safety
+      with open(SAVE_FILE, "w", encoding="utf-8") as f:
+        json.dump(st.session_state.messages, f, ensure_ascii=False)
+
+  except Exception as e:
+    st.error(
+        f"❌ 오류가 발생했습니다. API 키가 올바른지 확인해 주세요. (상세 에러:"
+        f" {e})"
+    )
