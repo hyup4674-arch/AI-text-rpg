@@ -13,13 +13,13 @@ SAVE_FILE = "rpg_save.json"
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (고난도 성장형 밸런스 버전)")
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (스킬 전투 시스템 연동 버전)")
 st.markdown(
-    "처음에는 나약한 상태로 시작하여 고난을 극복하며 성장하는 정통 하이브리드"
-    " 텍스트 RPG 공간입니다."
+    "스토리 진행과 로컬 파이썬 턴제 전투(스킬 시스템 포함)가 결합된 텍스트 RPG"
+    " 공간입니다."
 )
 
-# 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화 (초기 능력치 하향 조정)]
+# 📊 [캐릭터 종합 스탯 및 전투 관련 상태 초기화]
 if "stats" not in st.session_state:
   st.session_state.stats = {
       "hp": 50,
@@ -30,7 +30,7 @@ if "stats" not in st.session_state:
       "level": 1,
       "equipment": {"무기": "녹슨 단검", "갑옷": "누더기 옷", "장신구": "없음"},
       "inventory": ["녹슨 단검", "체력 포션 (소)"],
-      "skills": ["기본 찌르기"],
+      "skills": ["기본 찌르기", "급소 베기"],
   }
 
 if "in_combat" not in st.session_state:
@@ -149,13 +149,15 @@ if st.sidebar.button("🔄 새 게임 시작 (초기화)"):
 st.sidebar.markdown("---")
 
 
-# ⚔️ [로컬 파이썬 전투 처리 함수 (초반 밸런스형 수치 적용)]
+# ⚔️ [로컬 파이썬 전투 처리 함수 (스킬 및 MP 소모 로직 포함)]
 def process_combat_action(action):
   player = st.session_state.stats
   enemy = st.session_state.enemy
   logs = st.session_state.combat_log
 
-  # 플레이어 턴 행동 처리 (초반이라 공격력이 낮음)
+  skip_counter_attack = False
+
+  # 플레이어 턴 행동 처리
   if action == "공격":
     dmg = random.randint(6, 14)
     enemy["hp"] = max(0, enemy["hp"] - dmg)
@@ -163,11 +165,26 @@ def process_combat_action(action):
         f"⚔️ 나의 공격! **{enemy['name']}**에게 {dmg}의 피해를 입혔습니다."
     )
 
-  elif action == "회피 시도":
-    if random.random() < 0.5:  # 50% 확률로 회피 성공
-      logs.append("🏃 대성공! 적의 공격 궤도를 완벽히 읽고 회피했습니다!")
+  elif action.startswith("스킬_"):
+    skill_name = action.replace("스킬_", "")
+    mp_cost = 8
+    if player["mp"] < mp_cost:
+      logs.append("❌ 마나(MP)가 부족하여 기술을 사용할 수 없습니다!")
       st.session_state.combat_log = logs
-      return  # 회피 성공 시 적의 반격 스킵
+      return  # 마나 부족 시 턴 소모 안 함
+    else:
+      player["mp"] -= mp_cost
+      dmg = random.randint(18, 30)  # 스킬은 강력한 데미지
+      enemy["hp"] = max(0, enemy["hp"] - dmg)
+      logs.append(
+          f"✨ 기술 [{skill_name}] 발동! **{enemy['name']}**에게 강력한"
+          f" {dmg}의 피해를 입혔습니다. (MP -{mp_cost})"
+      )
+
+  elif action == "회피 시도":
+    if random.random() < 0.5:
+      logs.append("🏃 대성공! 적의 공격 궤도를 완벽히 읽고 회피했습니다!")
+      skip_counter_attack = True
     else:
       logs.append("💨 회피 실패! 몸을 피하지 못하고 공격을 허용합니다...")
 
@@ -184,7 +201,7 @@ def process_combat_action(action):
       logs.append("❌ 인벤토리에 체력 포션이 없습니다!")
 
   # 적의 반격 턴 (적이 살아있고, 회피 성공으로 스킵되지 않은 경우)
-  if enemy["hp"] > 0:
+  if enemy["hp"] > 0 and not skip_counter_attack:
     enemy_dmg = random.randint(5, 12)
     if action == "방어/블럭":
       enemy_dmg //= 2
@@ -215,7 +232,7 @@ def process_combat_action(action):
         "💀 **[치명패]** 체력이 모두 소모되어 쓰러졌습니다... 암흑이 찾아옵니다."
     )
     st.session_state.in_combat = False
-    player["hp"] = 10  # 간신히 살아남은 페널티 부활
+    player["hp"] = 10
 
   st.session_state.combat_log = logs
 
@@ -241,7 +258,7 @@ else:
           "예상치 못한 불행, 자원 부족, 위기 상황이 자주 찾아오며, 때로는 극적인 행운이 찾아옵니다. "
           "직업은 전사, 마법사, 성직자, 궁수, 도적 중에서 선택할 수 있으며 각 직업별로 전문적인 스킬을 배우고 발전시킬 수 있습니다.\n"
           "플레이어가 행동을 입력하면 스토리를 전개하세요. 만약 몬스터와 조우하여 **전투가 벌어지면**, 답변 본문 마지막 줄에 단독으로 "
-          '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요. (초반 적은 HP 25~35 수준으로 약하게 설정)\n'
+          '[START_COMBAT: {"name": "초급 몬스터이름", "hp": 30, "atk": 8}] 형식의 JSON을 출력하여 로컬 전투 시스템을 즉시 가동시키세요.\n'
           "현재 플레이어 상태 정보:\n"
           f"- HP: {current_stats['hp']}/{current_stats['max_hp']}\n"
           f"- MP: {current_stats['mp']}/{current_stats['max_mp']}\n"
@@ -331,19 +348,40 @@ else:
           f" {enemy['hp']} / {enemy['max_hp']})"
       )
 
+      # 기본 행동 버튼
       col1, col2, col3, col4 = st.columns(4)
-      if col1.button("⚔️ 기본 공격"):
+      if col1.button("⚔️ 기본 공격", use_container_width=True):
         process_combat_action("공격")
         st.rerun()
-      if col2.button("🏃 회피 시도"):
+      if col2.button("🏃 회피 시도", use_container_width=True):
         process_combat_action("회피 시도")
         st.rerun()
-      if col3.button("🛡️ 방어/블럭"):
+      if col3.button("🛡️ 방어/블럭", use_container_width=True):
         process_combat_action("방어/블럭")
         st.rerun()
-      if col4.button("🧪 포션 사용"):
+      if col4.button("🧪 포션 사용", use_container_width=True):
         process_combat_action("포션 사용")
         st.rerun()
+
+      st.markdown("---")
+
+      # ✨ 전문 기술(스킬) 선택 영역 추가
+      st.markdown("##### ✨ 전문 기술 사용 (MP 8 소모)")
+      available_skills = stats.get("skills", [])
+      if available_skills:
+        sc1, sc2 = st.columns([3, 1])
+        with sc1:
+          selected_skill = st.selectbox(
+              "사용할 기술 선택",
+              available_skills,
+              label_visibility="collapsed",
+          )
+        with sc2:
+          if st.button("✨ 기술 발동", use_container_width=True):
+            process_combat_action(f"스킬_{selected_skill}")
+            st.rerun()
+      else:
+        st.info("현재 배운 전문 기술이 없습니다.")
 
       st.markdown("---")
       st.markdown("##### 📜 실시간 전투 로그")
