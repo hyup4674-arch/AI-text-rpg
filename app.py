@@ -5,17 +5,34 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-# 🔑 [API 키 입력 설정 (기존 키 제거됨)]
+# 🔑 [API 키 입력 설정]
 DEFAULT_API_KEY = ""
 SAVE_FILE = "rpg_save.json"
 
 st.set_page_config(
     page_title="Gemini 텍스트 RPG 시뮬레이터", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (우측 상태 패널 탑재형)")
+
+# 🎨 [우측 상태창 상단 고정(Sticky) CSS 적용]
+st.markdown(
+    """
+    <style>
+    /* 메인 화면의 두 번째 열(우측 상태창)을 스크롤 시 상단에 고정 */
+    [data-testid="column"]:nth-of-type(2) {
+        position: sticky;
+        top: 5rem;
+        height: fit-content;
+        z-index: 99;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.title("⚔️ 판타지 텍스트 RPG 게임 마스터 (우측 고정 상태 패널)")
 st.markdown(
     "Google Gemini API와 Streamlit을 연동하여, 화면 우측에 캐릭터의 모든"
-    " 스탯·장비·기술이 상시 고정 표시되는 텍스트 RPG 공간입니다."
+    " 스탯·장비·기술이 항상 고정 표시되는 텍스트 RPG 공간입니다."
 )
 
 # 📊 [캐릭터 종합 스탯 및 장비/기술 시스템 초기화]
@@ -84,7 +101,7 @@ st.sidebar.markdown("---")
 # 🖥️ [화면 레이아웃 분할: 왼쪽은 채팅 영역(2.5), 오른쪽은 상시 고정 상태 패널(1)]
 chat_col, status_col = st.columns([2.5, 1], gap="medium")
 
-# 우측 상태 패널 구성
+# 우측 상태 패널 구성 (스크롤 시 고정됨)
 with status_col:
   st.markdown("### 🛡️ 캐릭터 상태창")
   with st.container(border=True):
@@ -156,7 +173,7 @@ with chat_col:
 
         if not st.session_state.messages:
           st.session_state.chat_session = st.session_state.client.chats.create(
-              model="gemini-3.6-flash",  # 최신 모델명 반영
+              model="gemini-3.6-flash",
               config=types.GenerateContentConfig(
                   system_instruction=system_instruction,
                   temperature=0.8,
@@ -194,7 +211,7 @@ with chat_col:
               )
 
           st.session_state.chat_session = st.session_state.client.chats.create(
-              model="gemini-3.6-flash",  # 최신 모델명 반영
+              model="gemini-3.6-flash",
               history=api_history if api_history else None,
               config=types.GenerateContentConfig(
                   system_instruction=system_instruction,
