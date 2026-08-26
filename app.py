@@ -19,6 +19,26 @@ st.markdown(
     " 마을을 방문하고 휴식을 취하며 착실히 세력을 키워나가세요."
 )
 
+# 🧹 [스킬 구조화 및 규격 정화 함수]
+def normalize_skills(skills_list):
+    normalized = []
+    for item in skills_list:
+        if isinstance(item, dict):
+            normalized.append({
+                "name": item.get("name", "미정 스킬"),
+                "effect": item.get("effect", "기능 정보 없음"),
+                "power": item.get("power", 15),
+                "mp_cost": item.get("mp_cost", 5)
+            })
+        elif isinstance(item, str):
+            normalized.append({
+                "name": item,
+                "effect": "기본 공격 기술",
+                "power": 18,
+                "mp_cost": 6
+            })
+    return normalized
+
 # 📊 [캐릭터 종합 스탯 초기화]
 if "stats" not in st.session_state:
     st.session_state.stats = {
@@ -40,7 +60,10 @@ if "stats" not in st.session_state:
         "reputation": {"인간": 0, "엘프": 0, "드워프": 0, "오크": 0},
         "equipment": {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷", "장신구": "없음"},
         "inventory": ["체력 포션 (소)", "체력 포션 (소)", "건포도 빵"],
-        "skills": ["기본 공격"],
+        "skills": [
+            {"name": "기본 베기", "effect": "근접 기본 물리 공격", "power": 12, "mp_cost": 0},
+            {"name": "강력한 일격", "effect": "급소를 겨냥한 강력한 물리 타격", "power": 28, "mp_cost": 8},
+        ],
     }
 
 # ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택]
@@ -89,13 +112,11 @@ st.markdown(
             const pWin = window.parent || window;
             const pDoc = pWin.document;
 
-            // 1. Element.prototype.scrollIntoView 완전 차단
             if (pWin.Element && !pWin.Element.prototype._scrollBlocker) {{
                 pWin.Element.prototype._scrollBlocker = true;
                 pWin.Element.prototype.scrollIntoView = function() {{}};
             }}
 
-            // 2. 메인 컨테이너 스크롤 위치 저장 및 복원
             function initScrollLock() {{
                 const mainEl = pDoc.querySelector('.main') || pDoc.documentElement;
                 if (!mainEl) return;
@@ -135,7 +156,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 📌 기본 모델을 gemini-3.1-flash-lite 로 우선 배치
+# 📌 gemini-3.1-flash-lite 무조건 기본 선택
 default_models = [
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
@@ -161,7 +182,6 @@ if api_key_input:
     except Exception:
         pass
 
-# 무조건 gemini-3.1-flash-lite 기본 선택
 default_index = 0
 if "gemini-3.1-flash-lite" in available_models:
     default_index = available_models.index("gemini-3.1-flash-lite")
@@ -182,7 +202,6 @@ st.sidebar.metric(label="✨ 경험치 (EXP)", value=f"{stats['exp']} / {stats['
 st.sidebar.metric(label="❤️ 체력 (HP)", value=f"{stats['hp']} / {stats['max_hp']}")
 st.sidebar.metric(label="💙 마나 (MP)", value=f"{stats['mp']} / {stats['max_mp']}")
 st.sidebar.metric(label="💰 보유 골드", value=f"{stats['gold']} G")
-st.sidebar.metric(label="🛡️ 보유 스킬 ", value=f"{stats['공격력/mp소모']} G")
 
 st.sidebar.markdown("##### 📊 캐릭터 능력치")
 st.sidebar.write(f"- 💪 **힘**: {stats['str']}")
@@ -218,6 +237,44 @@ if stats.get("stat_points", 0) > 0:
             stats["stat_points"] -= 5
             st.rerun()
 
+# ⚔️ [보유 스킬 정보창 및 자동전투 pre-set 설정]
+st.sidebar.markdown("---")
+st.sidebar.subheader("✨ 보유 스킬 및 전투 설정")
+
+st.session_state.stats["skills"] = normalize_skills(st.session_state.stats.get("skills", []))
+skills_data = st.session_state.stats["skills"]
+
+if skills_data:
+    for sk in skills_data:
+        st.sidebar.markdown(
+            f"🗡️ **{sk['name']}**  \n"
+            f"- **효과**: {sk['effect']}  \n"
+            f"- **위력(공격력)**: {sk['power']} | **MP 소모**: {sk['mp_cost']} MP"
+        )
+else:
+    st.sidebar.write("보유한 스킬이 없습니다.")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("🎯 **[자동전투 사용 스킬 설정]**")
+skill_options = [sk["name"] for sk in skills_data] if skills_data else ["기본 공격"]
+
+default_s1 = skill_options[0]
+default_s2 = skill_options[1] if len(skill_options) > 1 else skill_options[0]
+
+auto_s1 = st.sidebar.selectbox(
+    "1순위 우선 스킬",
+    options=skill_options,
+    index=0,
+    key="select_auto_skill_1"
+)
+auto_s2 = st.sidebar.selectbox(
+    "2순위 차선 스킬",
+    options=skill_options,
+    index=min(1, len(skill_options) - 1),
+    key="select_auto_skill_2"
+)
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("##### 🤝 종족별 평판")
 if "reputation" in stats:
     for race, rep in stats["reputation"].items():
@@ -275,7 +332,7 @@ def add_exp(amount):
         player["exp"] -= player["max_exp"]
         player["level"] += 1
         player["max_exp"] = int(player["max_exp"] * 1.5)
-        player["stat_points"] += 5  # 레벨업 시 스탯 포인트 5 부여
+        player["stat_points"] += 5
         player["max_hp"] += 15
         player["hp"] = player["max_hp"]
         player["max_mp"] += 10
@@ -284,7 +341,7 @@ def add_exp(amount):
     return leveled_up
 
 
-# ⚔️ [자동 전투 시뮬레이션 함수]
+# ⚔️ [자동 전투 시뮬레이션 함수 - Pre-set 스킬 연동]
 def run_automatic_combat(enemy_data):
     player = st.session_state.stats
     enemy = {
@@ -295,20 +352,47 @@ def run_automatic_combat(enemy_data):
     }
     combat_logs = [f"🚨 **[교전 발생]** 적 세력 **{enemy['name']}**(HP: {enemy['hp']})과 전투가 시작되었습니다!"]
 
+    # 스킬 데이터 맵핑
+    skills_map = {sk["name"]: sk for sk in normalize_skills(player.get("skills", []))}
+    s1_obj = skills_map.get(auto_s1)
+    s2_obj = skills_map.get(auto_s2)
+
     turn = 1
     while enemy["hp"] > 0 and player["hp"] > 0 and turn <= 12:
         combat_logs.append(f"\n--- [전투 턴 {turn}] ---")
 
+        # 1. HP 40% 미만 시 체력 포션 사용
         if player["hp"] < (player["max_hp"] * 0.4) and "체력 포션 (소)" in player["inventory"]:
             player["inventory"].remove("체력 포션 (소)")
             heal = 30
             player["hp"] = min(player["max_hp"], player["hp"] + heal)
             combat_logs.append(f"🧪 포션을 마셔 HP가 {heal} 회복되었습니다! (현재 HP: {player['hp']}/{player['max_hp']})")
-        elif player["mp"] >= 8 and player["skills"]:
-            player["mp"] -= 8
-            dmg = random.randint(20, 32) + (player["str"] // 2)
+
+        # 2. 1순위 설정 스킬 발동 시도
+        elif s1_obj and player["mp"] >= s1_obj["mp_cost"]:
+            player["mp"] -= s1_obj["mp_cost"]
+            base_pow = s1_obj.get("power", 20)
+            stat_bonus = max(player["str"], player["int"]) // 2
+            dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
             enemy["hp"] = max(0, enemy["hp"] - dmg)
-            combat_logs.append(f"✨ 기술 발동! **{enemy['name']}**에게 {dmg}의 피해를 입혔습니다. (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})")
+            combat_logs.append(
+                f"✨ [우선스킬 1] **{s1_obj['name']}** 발동! ({s1_obj['effect']}) "
+                f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
+            )
+
+        # 3. 2순위 설정 스킬 발동 시도
+        elif s2_obj and player["mp"] >= s2_obj["mp_cost"]:
+            player["mp"] -= s2_obj["mp_cost"]
+            base_pow = s2_obj.get("power", 15)
+            stat_bonus = max(player["str"], player["int"]) // 2
+            dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
+            enemy["hp"] = max(0, enemy["hp"] - dmg)
+            combat_logs.append(
+                f"✨ [우선스킬 2] **{s2_obj['name']}** 발동! ({s2_obj['effect']}) "
+                f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
+            )
+
+        # 4. 기본 공격 (MP 부족 또는 스킬 미설정 시)
         else:
             dmg = random.randint(8, 16) + (player["str"] // 3)
             enemy["hp"] = max(0, enemy["hp"] - dmg)
@@ -357,11 +441,11 @@ else:
                 "당신은 4대 종족(인간, 엘프, 드워프, 오크)이 대륙 패권을 다투는 '에델가르드 대륙'의 게임 마스터(GM)입니다.\n"
                 "주인공은 전투뿐만 아니라 마을/영지 방문, 여관 휴식, 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n"
                 "📍 [게임 시작 규칙]:\n"
-                "게임을 처음 시작하거나 종족/직업이 '미정'인 경우, 먼저 플레이어에게 종족(인간, 엘프, 드워프, 오크 중 택1)과 "
+                "게임을 처음 시작하거나 종족/직업이 '미정'인 경우, 플레이어에게 종족(인간, 엘프, 드워프, 오크 중 택1)과 "
                 "직업(전사, 마법사, 궁수, 도적, 성직자 중 택1)을 정하도록 선택지를 제시하세요.\n\n"
                 "📍 [태그 출력 규칙]:\n"
                 "1. 교전 시: [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n"
-                "2. 상태 변동 시: [JSON_UPDATE: {\"race\": \"선택종족\", \"class_name\": \"선택직업\", \"hp\": 숫자, \"max_hp\": 숫자, \"mp\": 숫자, \"max_mp\": 숫자, \"gold\": 숫자, \"level\": 숫자, \"exp\": 숫자, \"max_exp\": 숫자, \"str\": 숫자, \"int\": 숫자, \"con\": 숫자, \"agi\": 숫자, \"reputation\": {...}, \"inventory\": [...]}]\n"
+                "2. 상태 변동 시: [JSON_UPDATE: {\"race\": \"선택종족\", \"class_name\": \"선택직업\", \"hp\": 숫자, \"max_hp\": 숫자, \"mp\": 숫자, \"max_mp\": 숫자, \"gold\": 숫자, \"level\": 숫자, \"exp\": 숫자, \"max_exp\": 숫자, \"str\": 숫자, \"int\": 숫자, \"con\": 숫자, \"agi\": 숫자, \"reputation\": {...}, \"inventory\": [...], \"skills\": [{\"name\": \"스킬명\", \"effect\": \"효과\", \"power\": 공격력숫자, \"mp_cost\": 마나소모숫자}]}]\n"
                 "3. 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
             )
 
@@ -527,7 +611,10 @@ else:
                                 updated_data = json.loads(matches[-1])
                                 for k, v in updated_data.items():
                                     if k in st.session_state.stats:
-                                        st.session_state.stats[k] = v
+                                        if k == "skills":
+                                            st.session_state.stats[k] = normalize_skills(v)
+                                        else:
+                                            st.session_state.stats[k] = v
                             except Exception:
                                 pass
 
