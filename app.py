@@ -52,18 +52,15 @@ if "stats" not in st.session_state:
         "level": 1,
         "exp": 0,
         "max_exp": 100,
-        "str": 10,  # 힘
-        "int": 10,  # 지능
-        "con": 10,  # 체력
-        "agi": 10,  # 민첩
-        "stat_points": 0,  # 분배 가능한 스탯 포인트
+        "str": 10,
+        "int": 10,
+        "con": 10,
+        "agi": 10,
+        "stat_points": 0,
         "reputation": {"인간": 0, "엘프": 0, "드워프": 0, "오크": 0},
         "equipment": {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷", "장신구": "없음"},
         "inventory": ["체력 포션 (소)", "체력 포션 (소)", "건포도 빵"],
-        "skills": [
-            {"name": "기본 베기", "effect": "근접 기본 물리 공격", "power": 12, "mp_cost": 0},
-            {"name": "강력한 일격", "effect": "급소를 겨냥한 강력한 물리 타격", "power": 28, "mp_cost": 8},
-        ],
+        "skills": [],
     }
 
 # ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택]
@@ -196,7 +193,9 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 캐릭터 상태창")
 
 stats = st.session_state.stats
-st.sidebar.write(f"👤 **종족**: {stats['race']} | **직업**: {stats['class_name']}")
+
+# 💡 실시간 반영되는 종족 / 직업 표시창
+st.sidebar.markdown(f"👤 **종족**: `{stats['race']}` | **직업**: `{stats['class_name']}`")
 st.sidebar.metric(label="⭐ 레벨", value=f"Lv. {stats['level']}")
 st.sidebar.metric(label="✨ 경험치 (EXP)", value=f"{stats['exp']} / {stats['max_exp']}")
 st.sidebar.metric(label="❤️ 체력 (HP)", value=f"{stats['hp']} / {stats['max_hp']}")
@@ -249,7 +248,7 @@ if skills_data:
         st.sidebar.markdown(
             f"🗡️ **{sk['name']}**  \n"
             f"- **효과**: {sk['effect']}  \n"
-            f"- **위력(공격력)**: {sk['power']} | **MP 소모**: {sk['mp_cost']} MP"
+            f"- **위력**: {sk['power']} | **MP 소모**: {sk['mp_cost']} MP"
         )
 else:
     st.sidebar.write("보유한 스킬이 없습니다.")
@@ -257,9 +256,6 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.markdown("🎯 **[자동전투 사용 스킬 설정]**")
 skill_options = [sk["name"] for sk in skills_data] if skills_data else ["기본 공격"]
-
-default_s1 = skill_options[0]
-default_s2 = skill_options[1] if len(skill_options) > 1 else skill_options[0]
 
 auto_s1 = st.sidebar.selectbox(
     "1순위 우선 스킬",
@@ -341,7 +337,7 @@ def add_exp(amount):
     return leveled_up
 
 
-# ⚔️ [자동 전투 시뮬레이션 함수 - Pre-set 스킬 연동]
+# ⚔️ [자동 전투 시뮬레이션 함수]
 def run_automatic_combat(enemy_data):
     player = st.session_state.stats
     enemy = {
@@ -352,7 +348,6 @@ def run_automatic_combat(enemy_data):
     }
     combat_logs = [f"🚨 **[교전 발생]** 적 세력 **{enemy['name']}**(HP: {enemy['hp']})과 전투가 시작되었습니다!"]
 
-    # 스킬 데이터 맵핑
     skills_map = {sk["name"]: sk for sk in normalize_skills(player.get("skills", []))}
     s1_obj = skills_map.get(auto_s1)
     s2_obj = skills_map.get(auto_s2)
@@ -361,14 +356,12 @@ def run_automatic_combat(enemy_data):
     while enemy["hp"] > 0 and player["hp"] > 0 and turn <= 12:
         combat_logs.append(f"\n--- [전투 턴 {turn}] ---")
 
-        # 1. HP 40% 미만 시 체력 포션 사용
         if player["hp"] < (player["max_hp"] * 0.4) and "체력 포션 (소)" in player["inventory"]:
             player["inventory"].remove("체력 포션 (소)")
             heal = 30
             player["hp"] = min(player["max_hp"], player["hp"] + heal)
             combat_logs.append(f"🧪 포션을 마셔 HP가 {heal} 회복되었습니다! (현재 HP: {player['hp']}/{player['max_hp']})")
 
-        # 2. 1순위 설정 스킬 발동 시도
         elif s1_obj and player["mp"] >= s1_obj["mp_cost"]:
             player["mp"] -= s1_obj["mp_cost"]
             base_pow = s1_obj.get("power", 20)
@@ -380,7 +373,6 @@ def run_automatic_combat(enemy_data):
                 f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
             )
 
-        # 3. 2순위 설정 스킬 발동 시도
         elif s2_obj and player["mp"] >= s2_obj["mp_cost"]:
             player["mp"] -= s2_obj["mp_cost"]
             base_pow = s2_obj.get("power", 15)
@@ -392,7 +384,6 @@ def run_automatic_combat(enemy_data):
                 f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
             )
 
-        # 4. 기본 공격 (MP 부족 또는 스킬 미설정 시)
         else:
             dmg = random.randint(8, 16) + (player["str"] // 3)
             enemy["hp"] = max(0, enemy["hp"] - dmg)
@@ -424,210 +415,285 @@ def run_automatic_combat(enemy_data):
         return result_text, False, 0
 
 
-# 🖥️ [채팅 인터페이스 처리]
+# 🖥️ [채팅 인터페이스 및 캐릭터 생성 단계]
 if not api_key_input:
     st.warning("⚠️ 좌측 사이드바에 **Google Gemini API 키**를 입력해 주세요.")
 else:
-    try:
-        if (
-            "client" not in st.session_state
-            or "chat_session" not in st.session_state
-            or st.session_state.get("current_model") != selected_model
-        ):
-            st.session_state.client = genai.Client(api_key=api_key_input)
-            st.session_state.current_model = selected_model
+    # 🌟 [1단계: 종족 선택 인터페이스]
+    if st.session_state.stats["race"] == "미정":
+        st.info("🌍 **[캐릭터 생성 - 1단계/2단계]** 에델가르드 대륙에 오신 것을 환영합니다. 먼저 당신의 **종족**을 선택해 주세요.")
+        
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            if st.button("👑 인간 (Imperials)", use_container_width=True):
+                st.session_state.stats["race"] = "인간"
+                st.rerun()
+            if st.button("🌿 엘프 (High Elves)", use_container_width=True):
+                st.session_state.stats["race"] = "엘프"
+                st.rerun()
+        with col_r2:
+            if st.button("⚒️ 드워프 (Mountain Dwarves)", use_container_width=True):
+                st.session_state.stats["race"] = "드워프"
+                st.rerun()
+            if st.button("🪓 오크 (War Hordes)", use_container_width=True):
+                st.session_state.stats["race"] = "오크"
+                st.rerun()
 
-            system_instruction = (
-                "당신은 4대 종족(인간, 엘프, 드워프, 오크)이 대륙 패권을 다투는 '에델가르드 대륙'의 게임 마스터(GM)입니다.\n"
-                "주인공은 전투뿐만 아니라 마을/영지 방문, 여관 휴식, 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n"
-                "📍 [게임 시작 규칙]:\n"
-                "게임을 처음 시작하거나 종족/직업이 '미정'인 경우, 플레이어에게 종족(인간, 엘프, 드워프, 오크 중 택1)과 "
-                "직업(전사, 마법사, 궁수, 도적, 성직자 중 택1)을 정하도록 선택지를 제시하세요.\n\n"
-                "📍 [태그 출력 규칙]:\n"
-                "1. 교전 시: [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n"
-                "2. 상태 변동 시: [JSON_UPDATE: {\"race\": \"선택종족\", \"class_name\": \"선택직업\", \"hp\": 숫자, \"max_hp\": 숫자, \"mp\": 숫자, \"max_mp\": 숫자, \"gold\": 숫자, \"level\": 숫자, \"exp\": 숫자, \"max_exp\": 숫자, \"str\": 숫자, \"int\": 숫자, \"con\": 숫자, \"agi\": 숫자, \"reputation\": {...}, \"inventory\": [...], \"skills\": [{\"name\": \"스킬명\", \"effect\": \"효과\", \"power\": 공격력숫자, \"mp_cost\": 마나소모숫자}]}]\n"
-                "3. 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
-            )
+    # 🌟 [2단계: 직업 선택 인터페이스]
+    elif st.session_state.stats["class_name"] == "미정":
+        st.info(f"✨ **[캐릭터 생성 - 2단계/2단계]** 선택하신 종족: **{st.session_state.stats['race']}**  \n아래에서 모험에서 정진할 **직업**을 선택해 주세요.")
+        
+        c1, c2, c3, c4, c5 = st.columns(5)
+        chosen_class = None
+        if c1.button("⚔️ 전사", use_container_width=True):
+            chosen_class = "전사"
+        elif c2.button("🔮 마법사", use_container_width=True):
+            chosen_class = "마법사"
+        elif c3.button("🏹 궁수", use_container_width=True):
+            chosen_class = "궁수"
+        elif c4.button("🗡️ 도적", use_container_width=True):
+            chosen_class = "도적"
+        elif c5.button("✨ 성직자", use_container_width=True):
+            chosen_class = "성직자"
 
-            loaded_messages = []
-            if os.path.exists(SAVE_FILE):
-                try:
-                    with open(SAVE_FILE, "r", encoding="utf-8") as f:
-                        loaded_messages = json.load(f)
-                except Exception:
-                    loaded_messages = []
+        if chosen_class:
+            st.session_state.stats["class_name"] = chosen_class
+            
+            # 직업별 초기 장비 및 스킬 설정
+            if chosen_class == "전사":
+                st.session_state.stats["equipment"]["무기"] = "강철 단검"
+                st.session_state.stats["skills"] = [
+                    {"name": "기본 베기", "effect": "근접 기본 물리 타격", "power": 15, "mp_cost": 0},
+                    {"name": "강력한 일격", "effect": "급소를 겨냥한 강력한 물리 강타", "power": 32, "mp_cost": 8}
+                ]
+            elif chosen_class == "마법사":
+                st.session_state.stats["equipment"]["무기"] = "수습 마법봉"
+                st.session_state.stats["skills"] = [
+                    {"name": "마력 화살", "effect": "기본 원거리 마법 타격", "power": 18, "mp_cost": 4},
+                    {"name": "화염구", "effect": "강력한 화염 속성 마법 타격", "power": 38, "mp_cost": 12}
+                ]
+            elif chosen_class == "궁수":
+                st.session_state.stats["equipment"]["무기"] = "목재 단궁"
+                st.session_state.stats["skills"] = [
+                    {"name": "정밀 사격", "effect": "급소를 노리는 원거리 관통 사격", "power": 20, "mp_cost": 3},
+                    {"name": "연사", "effect": "빠른 속도의 연속 화살 사격", "power": 34, "mp_cost": 9}
+                ]
+            elif chosen_class == "도적":
+                st.session_state.stats["equipment"]["무기"] = "쌍 단검"
+                st.session_state.stats["skills"] = [
+                    {"name": "기습", "effect": "적의 허점을 찌르는 치명타 공격", "power": 22, "mp_cost": 4},
+                    {"name": "독침 베기", "effect": "독을 바른 단검으로 물리 타격", "power": 35, "mp_cost": 10}
+                ]
+            elif chosen_class == "성직자":
+                st.session_state.stats["equipment"]["무기"] = "나무 메이스"
+                st.session_state.stats["skills"] = [
+                    {"name": "신성한 타격", "effect": "신력 기반의 타격 물리 공격", "power": 16, "mp_cost": 3},
+                    {"name": "치유의 빛", "effect": "자신의 HP를 회복하며 신성 타격", "power": 26, "mp_cost": 10}
+                ]
+            st.rerun()
 
-            st.session_state.messages = loaded_messages
+    # 🌟 [본격 게임 시작: Gemini API 연결]
+    else:
+        try:
+            if (
+                "client" not in st.session_state
+                or "chat_session" not in st.session_state
+                or st.session_state.get("current_model") != selected_model
+            ):
+                st.session_state.client = genai.Client(api_key=api_key_input)
+                st.session_state.current_model = selected_model
 
-            if not st.session_state.messages:
-                st.session_state.chat_session = st.session_state.client.chats.create(
-                    model=selected_model,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        temperature=0.85,
-                    ),
+                system_instruction = (
+                    "당신은 4대 종족(인간, 엘프, 드워프, 오크)이 대륙 패권을 다투는 '에델가르드 대륙'의 게임 마스터(GM)입니다.\n"
+                    "주인공은 전투뿐만 아니라 마을/영지 방문, 여관 휴식, 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n"
+                    "📍 [태그 출력 규칙]:\n"
+                    "1. 교전 시: [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n"
+                    "2. 상태 변동 시: [JSON_UPDATE: {\"race\": \"종족\", \"class_name\": \"직업\", \"hp\": 숫자, \"max_hp\": 숫자, \"mp\": 숫자, \"max_mp\": 숫자, \"gold\": 숫자, \"level\": 숫자, \"exp\": 숫자, \"max_exp\": 숫자, \"str\": 숫자, \"int\": 숫자, \"con\": 숫자, \"agi\": 숫자, \"reputation\": {...}, \"inventory\": [...], \"skills\": [{\"name\": \"스킬명\", \"effect\": \"효과\", \"power\": 공격력, \"mp_cost\": 마나소모}]}]\n"
+                    "3. 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
                 )
-                with st.spinner(f"[{selected_model}] 에델가르드 대륙 생성 중..."):
-                    initial_prompt = (
-                        "에델가르드 대륙은 현재 인간, 엘프, 드워프, 오크 4대 종족의 영토 확장 전쟁으로 뜨겁습니다. "
-                        "플레이어는 세력이 교차하는 국경 중립 도시 '크로스로드' 여관에서 눈을 떴습니다. "
-                        "플레이어에게 어떤 종족(인간, 엘프, 드워프, 오크)과 어떤 직업(전사, 마법사, 궁수, 도적, 성직자)으로 여정을 시작할지 먼저 물어보세요. "
-                        "(종족과 직업을 선택할 수 있는 선택지 태그 [CHOICES: ...]를 반드시 제시해 주세요)"
-                    )
+
+                loaded_messages = []
+                if os.path.exists(SAVE_FILE):
                     try:
-                        response = st.session_state.chat_session.send_message(initial_prompt)
-                        bot_response = response.text
-                    except Exception as e:
-                        bot_response = f"세계 생성 중 오류가 발생했습니다: {e}"
-
-                    st.session_state.messages = [{
-                        "role": "assistant",
-                        "content": f"🌍 **[에델가르드 패권전 서막 ({selected_model})]**\n\n{bot_response}",
-                    }]
-
-                    with open(SAVE_FILE, "w", encoding="utf-8") as f:
-                        json.dump(st.session_state.messages, f, ensure_ascii=False)
-            else:
-                api_history = []
-                for msg in st.session_state.messages:
-                    r = "model" if msg["role"] == "assistant" else ("user" if msg["role"] == "user" else None)
-                    if r:
-                        api_history.append(
-                            types.Content(role=r, parts=[types.Part.from_text(text=msg["content"])])
-                        )
-
-                st.session_state.chat_session = st.session_state.client.chats.create(
-                    model=selected_model,
-                    history=api_history if api_history else None,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        temperature=0.85,
-                    ),
-                )
-
-        # 📖 [채팅 히스토리 렌더링]
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                if message["role"] == "assistant":
-                    st.markdown(clean_tags(message["content"]))
-                else:
-                    st.markdown(message["content"])
-
-        # 🎯 [선택지 버튼 UI 생성]
-        current_choices = []
-        if st.session_state.messages:
-            last_msg = st.session_state.messages[-1]
-            if last_msg["role"] == "assistant":
-                choices_match = re.search(r"\[CHOICES:\s*(\[.*?\])\s*\]", last_msg["content"], re.DOTALL)
-                if choices_match:
-                    try:
-                        current_choices = json.loads(choices_match.group(1))
+                        with open(SAVE_FILE, "r", encoding="utf-8") as f:
+                            loaded_messages = json.load(f)
                     except Exception:
-                        current_choices = []
+                        loaded_messages = []
 
-        selected_button_prompt = None
-        if current_choices:
-            st.markdown("##### 🎯 행동 선택 (버튼을 클릭하세요)")
-            for idx, choice in enumerate(current_choices):
-                if st.button(f"👉 {choice}", key=f"btn_{len(st.session_state.messages)}_{idx}", use_container_width=True):
-                    selected_button_prompt = choice
+                st.session_state.messages = loaded_messages
 
-        chat_input_prompt = st.chat_input("또는 직접 행동을 작성하세요...")
-        user_prompt = selected_button_prompt or chat_input_prompt
-
-        # 💬 [사용자 프롬프트 전송 및 처리]
-        if user_prompt:
-            st.session_state.messages.append({"role": "user", "content": user_prompt})
-            with st.chat_message("user"):
-                st.markdown(user_prompt)
-
-            with st.chat_message("assistant"):
-                with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
-                    try:
-                        cur_stats = st.session_state.stats
-                        augmented_prompt = (
-                            f"[현재 캐릭터 스탯 - 종족: {cur_stats['race']}, 직업: {cur_stats['class_name']}, "
-                            f"HP: {cur_stats['hp']}/{cur_stats['max_hp']}, MP: {cur_stats['mp']}/{cur_stats['max_mp']}, "
-                            f"EXP: {cur_stats['exp']}/{cur_stats['max_exp']}, 골드: {cur_stats['gold']}G, "
-                            f"레벨: {cur_stats['level']}, 힘:{cur_stats['str']}, 지능:{cur_stats['int']}, 체력스탯:{cur_stats['con']}, 민첩:{cur_stats['agi']}, "
-                            f"인벤토리: {json.dumps(cur_stats['inventory'], ensure_ascii=False)}]\n"
-                            f"플레이어 행동: {user_prompt}"
+                if not st.session_state.messages:
+                    st.session_state.chat_session = st.session_state.client.chats.create(
+                        model=selected_model,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            temperature=0.85,
+                        ),
+                    )
+                    with st.spinner(f"[{selected_model}] 에델가르드 대륙의 세력 정세를 생성하는 중입니다..."):
+                        p_race = st.session_state.stats["race"]
+                        p_class = st.session_state.stats["class_name"]
+                        initial_prompt = (
+                            f"플레이어는 **{p_race}** 종족의 **{p_class}** 직업으로 캐릭터를 완성했습니다.\n"
+                            "에델가르드 대륙은 인간 제국, 엘프 고대숲, 드워프 요새, 오크 연맹의 4대 세력전으로 소용돌이치고 있습니다. "
+                            "주인공은 국경 중립 도시 '크로스로드' 여관에서 눈을 떴습니다.\n"
+                            "주인공의 종족과 직업적 분위기를 고려한 입체적인 몰입 서막을 열어주고, "
+                            "마을에서 취할 수 있는 자율 선택지 4가지를 태그 [CHOICES: ...]로 제시해 주세요."
                         )
+                        try:
+                            response = st.session_state.chat_session.send_message(initial_prompt)
+                            bot_response = response.text
+                        except Exception as e:
+                            bot_response = f"세계 생성 중 오류가 발생했습니다: {e}"
 
-                        response = st.session_state.chat_session.send_message(augmented_prompt)
-                        bot_response = response.text
-                        final_output = bot_response
-
-                        # 1. 전투 발생 체크
-                        combat_match = re.search(r"\[START_COMBAT:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL)
-                        if combat_match:
-                            try:
-                                combat_data = json.loads(combat_match.group(1))
-                                combat_log_text, victory, reward_gold = run_automatic_combat(combat_data)
-
-                                base_story = clean_tags(bot_response)
-                                updated_stats = st.session_state.stats
-
-                                post_prompt = (
-                                    f"전투 결과: {'승리' if victory else '패배'}, 보상 골드: {reward_gold}G. "
-                                    f"[현재 실제 스탯 - HP: {updated_stats['hp']}/{updated_stats['max_hp']}, 골드: {updated_stats['gold']}G, EXP: {updated_stats['exp']}/{updated_stats['max_exp']}]. "
-                                    "전투 직후 현장 상황을 생생히 묘사하고, 휴식/이동/영지 방문 등 다음 행동 선택지를 제시해 주세요."
-                                )
-                                post_response = st.session_state.chat_session.send_message(post_prompt)
-                                post_text_clean = clean_tags(post_response.text)
-
-                                authoritative_json = json.dumps({
-                                    "race": updated_stats["race"],
-                                    "class_name": updated_stats["class_name"],
-                                    "hp": updated_stats["hp"],
-                                    "max_hp": updated_stats["max_hp"],
-                                    "mp": updated_stats["mp"],
-                                    "max_mp": updated_stats["max_mp"],
-                                    "gold": updated_stats["gold"],
-                                    "level": updated_stats["level"],
-                                    "exp": updated_stats["exp"],
-                                    "max_exp": updated_stats["max_exp"],
-                                    "str": updated_stats["str"],
-                                    "int": updated_stats["int"],
-                                    "con": updated_stats["con"],
-                                    "agi": updated_stats["agi"],
-                                    "reputation": updated_stats.get("reputation", {}),
-                                    "equipment": updated_stats["equipment"],
-                                    "inventory": updated_stats["inventory"],
-                                    "skills": updated_stats["skills"],
-                                }, ensure_ascii=False)
-
-                                post_choices_match = re.search(r"\[CHOICES:\s*(\[.*?\])\s*\]", post_response.text, re.DOTALL)
-                                post_choices_str = post_choices_match.group(0) if post_choices_match else '[CHOICES: ["여관으로 가서 휴식", "마을 길드로 이동"]]'
-
-                                final_output = f"{base_story}\n\n---\n{combat_log_text}\n---\n\n{post_text_clean}\n\n[JSON_UPDATE: {authoritative_json}]\n{post_choices_str}"
-                            except Exception as e:
-                                final_output += f"\n\n(전투 처리 중 오류: {e})"
-
-                        # 2. 스탯 반영
-                        matches = re.findall(r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL)
-                        if matches:
-                            try:
-                                updated_data = json.loads(matches[-1])
-                                for k, v in updated_data.items():
-                                    if k in st.session_state.stats:
-                                        if k == "skills":
-                                            st.session_state.stats[k] = normalize_skills(v)
-                                        else:
-                                            st.session_state.stats[k] = v
-                            except Exception:
-                                pass
-
-                        st.markdown(clean_tags(final_output))
-                        st.session_state.messages.append({"role": "assistant", "content": final_output})
+                        st.session_state.messages = [{
+                            "role": "assistant",
+                            "content": f"🌍 **[에델가르드 패권전 서막 - {p_race} {p_class}]**\n\n{bot_response}",
+                        }]
 
                         with open(SAVE_FILE, "w", encoding="utf-8") as f:
                             json.dump(st.session_state.messages, f, ensure_ascii=False)
+                else:
+                    api_history = []
+                    for msg in st.session_state.messages:
+                        r = "model" if msg["role"] == "assistant" else ("user" if msg["role"] == "user" else None)
+                        if r:
+                            api_history.append(
+                                types.Content(role=r, parts=[types.Part.from_text(text=msg["content"])])
+                            )
 
-                        st.rerun()
+                    st.session_state.chat_session = st.session_state.client.chats.create(
+                        model=selected_model,
+                        history=api_history if api_history else None,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            temperature=0.85,
+                        ),
+                    )
 
-                    except Exception as e:
-                        st.error(f"❌ 오류가 발생했습니다: {e}")
+            # 📖 [채팅 히스토리 렌더링]
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    if message["role"] == "assistant":
+                        st.markdown(clean_tags(message["content"]))
+                    else:
+                        st.markdown(message["content"])
 
-    except Exception as e:
-        st.error(f"❌ 초기화 오류: {e}")
+            # 🎯 [선택지 버튼 UI 생성]
+            current_choices = []
+            if st.session_state.messages:
+                last_msg = st.session_state.messages[-1]
+                if last_msg["role"] == "assistant":
+                    choices_match = re.search(r"\[CHOICES:\s*(\[.*?\])\s*\]", last_msg["content"], re.DOTALL)
+                    if choices_match:
+                        try:
+                            current_choices = json.loads(choices_match.group(1))
+                        except Exception:
+                            current_choices = []
+
+            selected_button_prompt = None
+            if current_choices:
+                st.markdown("##### 🎯 행동 선택 (버튼을 클릭하세요)")
+                for idx, choice in enumerate(current_choices):
+                    if st.button(f"👉 {choice}", key=f"btn_{len(st.session_state.messages)}_{idx}", use_container_width=True):
+                        selected_button_prompt = choice
+
+            chat_input_prompt = st.chat_input("또는 직접 행동을 작성하세요...")
+            user_prompt = selected_button_prompt or chat_input_prompt
+
+            # 💬 [사용자 프롬프트 전송 및 처리]
+            if user_prompt:
+                st.session_state.messages.append({"role": "user", "content": user_prompt})
+                with st.chat_message("user"):
+                    st.markdown(user_prompt)
+
+                with st.chat_message("assistant"):
+                    with st.spinner("게임 마스터가 다음 상황을 계산 중입니다..."):
+                        try:
+                            cur_stats = st.session_state.stats
+                            augmented_prompt = (
+                                f"[현재 캐릭터 스탯 - 종족: {cur_stats['race']}, 직업: {cur_stats['class_name']}, "
+                                f"HP: {cur_stats['hp']}/{cur_stats['max_hp']}, MP: {cur_stats['mp']}/{cur_stats['max_mp']}, "
+                                f"EXP: {cur_stats['exp']}/{cur_stats['max_exp']}, 골드: {cur_stats['gold']}G, "
+                                f"레벨: {cur_stats['level']}, 힘:{cur_stats['str']}, 지능:{cur_stats['int']}, 체력스탯:{cur_stats['con']}, 민첩:{cur_stats['agi']}, "
+                                f"인벤토리: {json.dumps(cur_stats['inventory'], ensure_ascii=False)}]\n"
+                                f"플레이어 행동: {user_prompt}"
+                            )
+
+                            response = st.session_state.chat_session.send_message(augmented_prompt)
+                            bot_response = response.text
+                            final_output = bot_response
+
+                            # 1. 전투 발생 체크
+                            combat_match = re.search(r"\[START_COMBAT:\s*(\{.*?\})\s*\]", bot_response, re.DOTALL)
+                            if combat_match:
+                                try:
+                                    combat_data = json.loads(combat_match.group(1))
+                                    combat_log_text, victory, reward_gold = run_automatic_combat(combat_data)
+
+                                    base_story = clean_tags(bot_response)
+                                    updated_stats = st.session_state.stats
+
+                                    post_prompt = (
+                                        f"전투 결과: {'승리' if victory else '패배'}, 보상 골드: {reward_gold}G. "
+                                        f"[현재 실제 스탯 - HP: {updated_stats['hp']}/{updated_stats['max_hp']}, 골드: {updated_stats['gold']}G, EXP: {updated_stats['exp']}/{updated_stats['max_exp']}]. "
+                                        "전투 직후 현장 상황을 생생히 묘사하고, 휴식/이동/영지 방문 등 다음 행동 선택지를 제시해 주세요."
+                                    )
+                                    post_response = st.session_state.chat_session.send_message(post_prompt)
+                                    post_text_clean = clean_tags(post_response.text)
+
+                                    authoritative_json = json.dumps({
+                                        "race": updated_stats["race"],
+                                        "class_name": updated_stats["class_name"],
+                                        "hp": updated_stats["hp"],
+                                        "max_hp": updated_stats["max_hp"],
+                                        "mp": updated_stats["mp"],
+                                        "max_mp": updated_stats["max_mp"],
+                                        "gold": updated_stats["gold"],
+                                        "level": updated_stats["level"],
+                                        "exp": updated_stats["exp"],
+                                        "max_exp": updated_stats["max_exp"],
+                                        "str": updated_stats["str"],
+                                        "int": updated_stats["int"],
+                                        "con": updated_stats["con"],
+                                        "agi": updated_stats["agi"],
+                                        "reputation": updated_stats.get("reputation", {}),
+                                        "equipment": updated_stats["equipment"],
+                                        "inventory": updated_stats["inventory"],
+                                        "skills": updated_stats["skills"],
+                                    }, ensure_ascii=False)
+
+                                    post_choices_match = re.search(r"\[CHOICES:\s*(\[.*?\])\s*\]", post_response.text, re.DOTALL)
+                                    post_choices_str = post_choices_match.group(0) if post_choices_match else '[CHOICES: ["여관으로 가서 휴식", "마을 길드로 이동"]]'
+
+                                    final_output = f"{base_story}\n\n---\n{combat_log_text}\n---\n\n{post_text_clean}\n\n[JSON_UPDATE: {authoritative_json}]\n{post_choices_str}"
+                                except Exception as e:
+                                    final_output += f"\n\n(전투 처리 중 오류: {e})"
+
+                            # 2. 스탯 반영
+                            matches = re.findall(r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL)
+                            if matches:
+                                try:
+                                    updated_data = json.loads(matches[-1])
+                                    for k, v in updated_data.items():
+                                        if k in st.session_state.stats:
+                                            if k == "skills":
+                                                st.session_state.stats[k] = normalize_skills(v)
+                                            else:
+                                                st.session_state.stats[k] = v
+                                except Exception:
+                                    pass
+
+                            st.markdown(clean_tags(final_output))
+                            st.session_state.messages.append({"role": "assistant", "content": final_output})
+
+                            with open(SAVE_FILE, "w", encoding="utf-8") as f:
+                                json.dump(st.session_state.messages, f, ensure_ascii=False)
+
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"❌ 오류가 발생했습니다: {e}")
+
+        except Exception as e:
+            st.error(f"❌ 초기화 오류: {e}")
