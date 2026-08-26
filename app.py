@@ -41,7 +41,7 @@ def normalize_skills(skills_list):
   return normalized
 
 
-# 🧠 [한글/영문 키 자동 변환 스마트 스탯 업데이트 함수]
+# 🧠 [한글/영문 키 자동 변환 및 증감 처리 스마트 스탯 업데이트 함수]
 def smart_update_stats(updated_data):
   key_map = {
       "지능": "int",
@@ -97,13 +97,42 @@ def smart_update_stats(updated_data):
     if target_key in stats:
       if target_key == "skills":
         stats["skills"] = normalize_skills(v)
-      elif isinstance(v, (int, float)):
-        stats[target_key] = int(v)
-      elif isinstance(v, str) and (v.startswith("+") or v.startswith("-")):
-        try:
-          stats[target_key] += int(v)
-        except ValueError:
-          stats[target_key] = v
+      elif target_key in ["str", "int", "con", "agi"]:
+        # 아이템 등으로 인한 작은 수치(+1, +2 등)는 절대값이 아닌 증가치(+=)로 반영
+        if isinstance(v, (int, float)) and abs(v) <= 5:
+          diff = int(v)
+          stats[target_key] += diff
+          # 체력(con) 스탯이 오르면 최대 체력 및 현재 체력도 함께 연동해서 증가
+          if target_key == "con":
+            hp_gain = diff * 10
+            stats["max_hp"] += hp_gain
+            stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+        elif isinstance(v, str) and (v.startswith("+") or v.startswith("-")):
+          try:
+            diff = int(v)
+            stats[target_key] += diff
+            if target_key == "con":
+              hp_gain = diff * 10
+              stats["max_hp"] += hp_gain
+              stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+          except ValueError:
+            pass
+        else:
+          new_val = int(v)
+          if target_key == "con":
+            diff = new_val - stats["con"]
+            hp_gain = diff * 10
+            stats["max_hp"] += hp_gain
+            stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+          stats[target_key] = new_val
+      elif target_key == "gold":
+        if isinstance(v, str) and (v.startswith("+") or v.startswith("-")):
+          try:
+            stats["gold"] += int(v)
+          except ValueError:
+            pass
+        else:
+          stats["gold"] = int(v)
       else:
         stats[target_key] = v
 
@@ -684,15 +713,14 @@ else:
             " 및 스탯/골드 거래 필수 지침]:\n플레이어가 상점에서 아이템이나"
             " 스탯 상승 상품을 구매/판매하거나 골드를 소모할 경우, 차감 또는"
             " 추가된 골드(gold)와 변경된 스탯(int, str, con, agi, hp, mp)의"
-            " **최종 계산 수치**를 반드시 [JSON_UPDATE] 태그에"
-            ' 출력하세요.\n예시: 지능+1 상품(50G) 구매 시 -> [JSON_UPDATE:'
-            ' {"gold": 보유골드-50, "int": 현재지능+1}]\n\n📍 [태그 출력'
-            ' 규칙]:\n1. 교전 시: [START_COMBAT: {"name": "적 이름", "hp":'
-            ' 40, "atk": 10}]\n2. 상태/스탯 변동 시: [JSON_UPDATE: {"str":'
-            ' 숫자, "int": 숫자, "con": 숫자, "agi": 숫자, "gold": 숫자, "hp":'
-            ' 숫자, "max_hp": 숫자, "mp": 숫자, "max_mp": 숫자, "inventory":'
-            ' [...], "skills": [...]}]\n3. 행동 선택지: [CHOICES: ["선택지1",'
-            ' "선택지2", "선택지3"]]'
+            " **최종 계산 수치** 또는 증가치를 반드시 [JSON_UPDATE] 태그에"
+            ' 출력하세요.\n예시: 체력+2 장갑 구매 시 -> [JSON_UPDATE: {"gold":'
+            ' 보유골드-60, "con": +2}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시:'
+            ' [START_COMBAT: {"name": "적 이름", "hp": 40, "atk": 10}]\n2. 상태/스탯'
+            ' 변동 시: [JSON_UPDATE: {"str": 숫자, "int": 숫자, "con": 숫자,'
+            ' "agi": 숫자, "gold": 숫자, "hp": 숫자, "max_hp": 숫자, "mp":'
+            ' 숫자, "max_mp": 숫자, "inventory": [...], "skills": [...]}]\n3.'
+            ' 행동 선택지: [CHOICES: ["선택지1", "선택지2", "선택지3"]]'
         )
 
         loaded_messages = []
@@ -914,7 +942,7 @@ else:
                 except Exception as e:
                   final_output += f"\n\n(전투 처리 중 오류: {e})"
 
-              # 2. 스탯 반영 (스마트 매핑 적용)
+              # 2. 스탯 반영 (스마트 증감 매핑 적용)
               matches = re.findall(
                   r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL
               )
