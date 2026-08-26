@@ -20,28 +20,32 @@ st.markdown(
 )
 
 
-# 🧹 [스킬 구조화 및 규격 정화 함수]
+# 💾 [세이브 파일 통합 저장 함수]
+def save_game():
+  data = {
+      "stats": st.session_state.get("stats", {}),
+      "messages": st.session_state.get("messages", []),
+  }
+  with open(SAVE_FILE, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False)
+
+
+# 🧹 [스킬 구조화 및 규격 정화 함수 (임의 변경 방지 고정)]
 def normalize_skills(skills_list):
+  # 플레이어 스킬은 시스템에 정의된 고정 구조 유지
   normalized = []
   for item in skills_list:
     if isinstance(item, dict):
       normalized.append({
-          "name": item.get("name", "미정 스킬"),
-          "effect": item.get("effect", "기능 정보 없음"),
+          "name": item.get("name", "기본 공격"),
+          "effect": item.get("effect", "기본 기술"),
           "power": item.get("power", 15),
-          "mp_cost": item.get("mp_cost", 5),
-      })
-    elif isinstance(item, str):
-      normalized.append({
-          "name": item,
-          "effect": "기본 공격 기술",
-          "power": 18,
-          "mp_cost": 6,
+          "mp_cost": item.get("mp_cost", 0),
       })
   return normalized
 
 
-# 🧠 [한글/영문 키 자동 변환 및 증감 처리 스마트 스탯 업데이트 함수]
+# 🧠 [한글/영문 키 자동 변환 및 증감 처리 스마트 스탯 업데이트 함수 (스킬 변경 원천 차단)]
 def smart_update_stats(updated_data):
   key_map = {
       "지능": "int",
@@ -81,8 +85,7 @@ def smart_update_stats(updated_data):
       "inventory": "inventory",
       "장비": "equipment",
       "equipment": "equipment",
-      "스킬": "skills",
-      "skills": "skills",
+      # 주의: 'skills'는 LLM이 임의로 건드리지 못하도록 key_map에서 제외하여 스킬 고정 유지
       "종족": "race",
       "race": "race",
       "직업": "class_name",
@@ -95,9 +98,7 @@ def smart_update_stats(updated_data):
   for raw_k, v in updated_data.items():
     target_key = key_map.get(raw_k, raw_k)
     if target_key in stats:
-      if target_key == "skills":
-        stats["skills"] = normalize_skills(v)
-      elif target_key in ["str", "int", "con", "agi"]:
+      if target_key in ["str", "int", "con", "agi"]:
         if isinstance(v, (int, float)) and abs(v) <= 5:
           diff = int(v)
           stats[target_key] += diff
@@ -146,57 +147,53 @@ def smart_update_stats(updated_data):
           stats["gold"] = int(v)
       else:
         stats[target_key] = v
+  save_game()
 
 
-# 💾 [세이브 데이터 저장 및 로드 함수]
-def save_game_state():
-  save_data = {
-      "messages": st.session_state.get("messages", []),
-      "stats": st.session_state.get("stats", {}),
-  }
-  with open(SAVE_FILE, "w", encoding="utf-8") as f:
-    json.dump(save_data, f, ensure_ascii=False)
+# 📊 [세이브 데이터 로드 및 캐릭터 종합 스탯 초기화]
+saved_stats = None
+loaded_messages = []
 
+if os.path.exists(SAVE_FILE):
+  try:
+    with open(SAVE_FILE, "r", encoding="utf-8") as f:
+      save_content = json.load(f)
+      if isinstance(save_content, dict):
+        saved_stats = save_content.get("stats")
+        loaded_messages = save_content.get("messages", [])
+      elif isinstance(save_content, list):
+        loaded_messages = save_content
+  except Exception:
+    pass
 
-# 📊 [캐릭터 종합 스탯 및 메시지 초기화 (세이브 파일 연동)]
 if "stats" not in st.session_state:
-  st.session_state.stats = {
-      "race": "미정",
-      "class_name": "미정",
-      "hp": 60,
-      "max_hp": 60,
-      "mp": 30,
-      "max_mp": 30,
-      "gold": 50,
-      "level": 1,
-      "exp": 0,
-      "max_exp": 100,
-      "str": 10,
-      "int": 10,
-      "con": 10,
-      "agi": 10,
-      "stat_points": 0,
-      "reputation": {"인간": 0, "엘프": 0, "드워프": 0, "오크": 0},
-      "equipment": {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷", "장신구": "없음"},
-      "inventory": ["체력 포션 (소)", "체력 포션 (소)", "건포도 빵"],
-      "skills": [],
-  }
+  if saved_stats:
+    st.session_state.stats = saved_stats
+  else:
+    st.session_state.stats = {
+        "race": "미정",
+        "class_name": "미정",
+        "hp": 60,
+        "max_hp": 60,
+        "mp": 30,
+        "max_mp": 30,
+        "gold": 50,
+        "level": 1,
+        "exp": 0,
+        "max_exp": 100,
+        "str": 10,
+        "int": 10,
+        "con": 10,
+        "agi": 10,
+        "stat_points": 0,
+        "reputation": {"인간": 0, "엘프": 0, "드워프": 0, "오크": 0},
+        "equipment": {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷", "장신구": "없음"},
+        "inventory": ["체력 포션 (소)", "체력 포션 (소)", "건포도 빵"],
+        "skills": [],
+    }
 
 if "messages" not in st.session_state:
-  st.session_state.messages = []
-  if os.path.exists(SAVE_FILE):
-    try:
-      with open(SAVE_FILE, "r", encoding="utf-8") as f:
-        saved_content = json.load(f)
-        if isinstance(saved_content, dict):
-          st.session_state.messages = saved_content.get("messages", [])
-          saved_stats = saved_content.get("stats")
-          if saved_stats:
-            st.session_state.stats = saved_stats
-        elif isinstance(saved_content, list):  # 구버전 세이브 호환성
-          st.session_state.messages = saved_content
-    except Exception:
-      st.session_state.messages = []
+  st.session_state.messages = loaded_messages
 
 # ⚙️ [좌측 사이드바: 게임 설정 및 상태창]
 st.sidebar.header("⚙️ 게임 설정 및 상태창")
@@ -288,7 +285,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 📌 모델 선택 리스트
+# 📌 모델 설정
 default_models = [
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
@@ -366,7 +363,7 @@ if stats.get("stat_points", 0) > 0:
     if st.sidebar.button("💪 힘 +5", key="btn_add_str", use_container_width=True):
       stats["str"] += 5
       stats["stat_points"] -= 5
-      save_game_state()
+      save_game()
       st.rerun()
     if st.sidebar.button(
         "❤️ 체력 +5", key="btn_add_con", use_container_width=True
@@ -376,7 +373,7 @@ if stats.get("stat_points", 0) > 0:
       stats["max_hp"] += hp_gain
       stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
       stats["stat_points"] -= 5
-      save_game_state()
+      save_game()
       st.rerun()
   with col_s2:
     if st.sidebar.button(
@@ -387,19 +384,19 @@ if stats.get("stat_points", 0) > 0:
       stats["max_mp"] += mp_gain
       stats["mp"] = min(stats["max_mp"], stats["mp"] + mp_gain)
       stats["stat_points"] -= 5
-      save_game_state()
+      save_game()
       st.rerun()
     if st.sidebar.button(
         "⚡ 민첩 +5", key="btn_add_agi", use_container_width=True
     ):
       stats["agi"] += 5
       stats["stat_points"] -= 5
-      save_game_state()
+      save_game()
       st.rerun()
 
-# ⚔️ [보유 스킬 정보창 및 자동전투 pre-set 설정]
+# ⚔️ [보유 스킬 정보창 및 자동전투 pre-set 설정 (기본 스킬 1개 + 직업 특성 스킬 1개 고정)]
 st.sidebar.markdown("---")
-st.sidebar.subheader("✨ 보유 스킬 및 전투 설정")
+st.sidebar.subheader("✨ 보유 스킬 및 전투 설정 (총 2개 고정)")
 
 st.session_state.stats["skills"] = normalize_skills(
     st.session_state.stats.get("skills", [])
@@ -460,10 +457,10 @@ uploaded_save = st.sidebar.file_uploader("📂 세이브 파일 불러오기", t
 if uploaded_save is not None:
   try:
     uploaded_bytes = uploaded_save.read()
-    parsed = json.loads(uploaded_bytes.decode("utf-8"))
+    json.loads(uploaded_bytes.decode("utf-8"))
     with open(SAVE_FILE, "wb") as f:
       f.write(uploaded_bytes)
-    st.sidebar.success("✅ 로드 완료! 잠시 후 적용됩니다.")
+    st.sidebar.success("✅ 로드 완료!")
     st.rerun()
   except Exception as e:
     st.sidebar.error(f"로드 실패: {e}")
@@ -501,10 +498,11 @@ def add_exp(amount):
     player["max_mp"] += mp_gain
     player["mp"] = player["max_mp"]
     leveled_up = True
+  save_game()
   return leveled_up
 
 
-# ⚔️ [자동 전투 시뮬레이션 함수]
+# ⚔️ [자동 전투 시뮬레이션 함수 - 성직자 치유 및 스킬 고정 적용]
 def run_automatic_combat(enemy_data):
   player = st.session_state.stats
   enemy = {
@@ -527,29 +525,29 @@ def run_automatic_combat(enemy_data):
   def process_skill_turn(sk_obj):
     player["mp"] -= sk_obj["mp_cost"]
     base_pow = sk_obj.get("power", 20)
-    attack_power = player["str"]
-    dmg = (
-        random.randint(max(1, base_pow - 3), base_pow + 5)
-        + attack_power
-        + (player["int"] // 3)
-    )
-    enemy["hp"] = max(0, enemy["hp"] - dmg)
 
-    log_msg = (
-        f"✨ **{sk_obj['name']}** 발동! ({sk_obj['effect']}) "
-        f"**{enemy['name']}**에게 {dmg}의 피해!"
-    )
-
-    if "치유" in sk_obj["name"]:
+    # 성직자의 '치유' 스킬인 경우: 공격력 없음, 자신만 치유
+    if sk_obj["name"] == "치유":
       heal_amount = base_pow + (player["int"] // 2)
       player["hp"] = min(player["max_hp"], player["hp"] + heal_amount)
-      log_msg += (
-          f" ✨ [신성 가호] HP가 **+{heal_amount}** 회복되었습니다! (내 HP:"
+      combat_logs.append(
+          f"✨ **{sk_obj['name']}** 발동! ({sk_obj['effect']}) "
+          f"HP가 **+{heal_amount}** 회복되었습니다! (내 HP:"
           f" {player['hp']}/{player['max_hp']})"
       )
-
-    log_msg += f" (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
-    combat_logs.append(log_msg)
+    else:
+      attack_power = player["str"]
+      dmg = (
+          random.randint(max(1, base_pow - 3), base_pow + 5)
+          + attack_power
+          + (player["int"] // 3)
+      )
+      enemy["hp"] = max(0, enemy["hp"] - dmg)
+      combat_logs.append(
+          f"✨ **{sk_obj['name']}** 발동! ({sk_obj['effect']}) "
+          f"**{enemy['name']}**에게 {dmg}의 피해를 입혔습니다! (적 남은 HP:"
+          f" {enemy['hp']}/{enemy['max_hp']})"
+      )
 
   turn = 1
   while enemy["hp"] > 0 and player["hp"] > 0 and turn <= 12:
@@ -621,6 +619,7 @@ def run_automatic_combat(enemy_data):
           f"\n🎊 **[레벨 업!]** Lv.{player['level']} 달성! 좌측 사이드바에서 스탯"
           " 포인트(5P)를 분배하세요!"
       )
+    save_game()
     return result_text, True, reward_gold
   else:
     player["hp"] = max(10, player["max_hp"] // 4)
@@ -628,6 +627,7 @@ def run_automatic_combat(enemy_data):
         "\n\n💀 **[전투 패배]** 부상을 입고 후퇴했습니다. 인근 마을 여관에서"
         " 간신히 치료를 받았습니다."
     )
+    save_game()
     return result_text, False, 0
 
 
@@ -646,23 +646,23 @@ else:
     with col_r1:
       if st.button("👑 인간 (Imperials)", use_container_width=True):
         st.session_state.stats["race"] = "인간"
-        save_game_state()
+        save_game()
         st.rerun()
       if st.button("🌿 엘프 (High Elves)", use_container_width=True):
         st.session_state.stats["race"] = "엘프"
-        save_game_state()
+        save_game()
         st.rerun()
     with col_r2:
       if st.button("⚒️ 드워프 (Mountain Dwarves)", use_container_width=True):
         st.session_state.stats["race"] = "드워프"
-        save_game_state()
+        save_game()
         st.rerun()
       if st.button("🪓 오크 (War Hordes)", use_container_width=True):
         st.session_state.stats["race"] = "오크"
-        save_game_state()
+        save_game()
         st.rerun()
 
-  # 🌟 [2단계: 직업 선택 인터페이스]
+  # 🌟 [2단계: 직업 선택 인터페이스 (기본스킬 1개 + 특성스킬 1개 총 2개 고정 부여)]
   elif st.session_state.stats["class_name"] == "미정":
     st.info(
         f"✨ **[캐릭터 생성 - 2단계/2단계]** 선택하신 종족:"
@@ -691,14 +691,14 @@ else:
         st.session_state.stats["skills"] = [
             {
                 "name": "기본 베기",
-                "effect": "근접 기본 물리 타격",
+                "effect": "마나 소모가 없는 근접 기본 물리 타격",
                 "power": 15,
                 "mp_cost": 0,
             },
             {
                 "name": "강력한 일격",
                 "effect": "급소를 겨냥한 강력한 물리 강타",
-                "power": 32,
+                "power": 30,
                 "mp_cost": 8,
             },
         ]
@@ -707,14 +707,14 @@ else:
         st.session_state.stats["skills"] = [
             {
                 "name": "마력 화살",
-                "effect": "기본 원거리 마법 타격",
+                "effect": "마나 소모가 없는 기본 원거리 마법 타격",
                 "power": 15,
                 "mp_cost": 0,
             },
             {
                 "name": "화염구",
                 "effect": "강력한 화염 속성 마법 타격",
-                "power": 38,
+                "power": 35,
                 "mp_cost": 12,
             },
         ]
@@ -723,14 +723,14 @@ else:
         st.session_state.stats["skills"] = [
             {
                 "name": "정밀 사격",
-                "effect": "급소를 노리는 원거리 관통 사격",
+                "effect": "마나 소모가 없는 원거리 관통 사격",
                 "power": 15,
                 "mp_cost": 0,
             },
             {
                 "name": "연사",
                 "effect": "빠른 속도의 연속 화살 사격",
-                "power": 34,
+                "power": 32,
                 "mp_cost": 9,
             },
         ]
@@ -739,14 +739,14 @@ else:
         st.session_state.stats["skills"] = [
             {
                 "name": "기습",
-                "effect": "적의 허점을 찌르는 치명타 공격",
+                "effect": "마나 소모가 없는 허점 찌르기 공격",
                 "power": 15,
                 "mp_cost": 0,
             },
             {
                 "name": "독침 베기",
                 "effect": "독을 바른 단검으로 물리 타격",
-                "power": 35,
+                "power": 33,
                 "mp_cost": 10,
             },
         ]
@@ -755,18 +755,18 @@ else:
         st.session_state.stats["skills"] = [
             {
                 "name": "신성한 타격",
-                "effect": "신력 기반의 타격 물리 공격",
+                "effect": "마나 소모가 없는 신력 기반 물리 공격",
                 "power": 15,
                 "mp_cost": 0,
             },
             {
-                "name": "치유의 기도",
-                "effect": "적을 공격하며 자신의 HP를 회복",
-                "power": 26,
+                "name": "치유",
+                "effect": "공격력 없이 자신의 체력만 회복하는 특성 기술",
+                "power": 35,
                 "mp_cost": 10,
             },
         ]
-      save_game_state()
+      save_game()
       st.rerun()
 
   # 🌟 [본격 게임 시작: Gemini API 연결]
@@ -784,19 +784,22 @@ else:
             "당신은 4대 종족(인간, 엘프, 드워프, 오크)이 대륙 패권을 다투는"
             " '에델가르드 대륙'의 게임 마스터(GM)입니다.\n주인공은 전투뿐만"
             " 아니라 마을/영지 방문, 여관 휴식, 상점 이용(아이템/스탯 상품"
-            " 거래), 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n📍 [상점"
-            " 및 스탯/골드 거래 필수 지침]:\n플레이어가 상점에서 아이템이나"
-            " 스탯 상승 상품을 구매/판매하거나 골드를 소모할 경우, 차감 또는"
-            " 추가된 골드(gold)와 변경된 스탯(int, str, con, agi, hp, max_hp,"
-            " mp, max_mp)의 **최종 계산 수치** 또는 증가치를 반드시"
-            " [JSON_UPDATE] 태그에 출력하세요.\n예시: 체력+2 장갑 구매 시 ->"
-            " [JSON_UPDATE: {\"gold\": 보유골드-60, \"con\": +2, \"체력\":"
-            " +4}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시: [START_COMBAT:"
-            " {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n2. 상태/스탯"
-            " 변동 시: [JSON_UPDATE: {\"str\": 숫자, \"int\": 숫자, \"con\": 숫자,"
-            " \"agi\": 숫자, \"gold\": 숫자, \"hp\": 숫자, \"max_hp\": 숫자, \"mp\":"
-            " 숫자, \"max_mp\": 숫자, \"inventory\": [...], \"skills\": [...]}]\n3."
-            " 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
+            " 거래), 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n📍 [절대"
+            " 엄수 규칙 - 스킬 임의 변경 금지]:\n플레이어의 스킬 목록은"
+            " **마나 소모 없는 기본 스킬 1개와 직업 특성 스킬 1개(총 2개)**로"
+            " 영구 고정되어 있습니다. 게임 마스터는 절대 임의로 새로운 스킬을"
+            " 만들거나 부여하거나 기존 스킬을 수정할 수 없습니다.\n\n📍 [상점 및"
+            " 스탯/골드 거래 필수 지침]:\n플레이어가 상점에서 아이템이나 스탯"
+            " 상승 상품을 구매/판매하거나 골드를 소모할 경우, 차감 또는 추가된"
+            " 골드(gold)와 변경된 스탯(int, str, con, agi, hp, max_hp, mp,"
+            " max_mp)의 **최종 계산 수치** 또는 증가치를 반드시"
+            " [JSON_UPDATE] 태그에 출력하세요.\n\n📍 [태그 출력 규칙]:\n1. 교전"
+            " 시: [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\":"
+            " 10}]\n2. 상태/스탯 변동 시: [JSON_UPDATE: {\"str\": 숫자, \"int\":"
+            " 숫자, \"con\": 숫자, \"agi\": 숫자, \"gold\": 숫자, \"hp\": 숫자,"
+            " \"max_hp\": 숫자, \"mp\": 숫자, \"max_mp\": 숫자, \"inventory\":"
+            " [...]}]\n3. 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\","
+            " \"선택지3\"]]"
         )
 
         api_history = []
@@ -853,7 +856,7 @@ else:
                     f" {p_class}]**\n\n{bot_response}"
                 ),
             }]
-            save_game_state()
+            save_game()
 
       # 📖 [채팅 히스토리 렌더링]
       for message in st.session_state.messages:
@@ -1014,7 +1017,7 @@ else:
               st.session_state.messages.append(
                   {"role": "assistant", "content": final_output}
               )
-              save_game_state()
+              save_game()
 
               st.rerun()
 
