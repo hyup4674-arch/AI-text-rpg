@@ -98,11 +98,9 @@ def smart_update_stats(updated_data):
       if target_key == "skills":
         stats["skills"] = normalize_skills(v)
       elif target_key in ["str", "int", "con", "agi"]:
-        # 아이템 등으로 인한 작은 수치(+1, +2 등)는 절대값이 아닌 증가치(+=)로 반영
         if isinstance(v, (int, float)) and abs(v) <= 5:
           diff = int(v)
           stats[target_key] += diff
-          # 체력(con) 스탯이 오르면 최대 체력 및 현재 체력도 함께 연동해서 증가
           if target_key == "con":
             hp_gain = diff * 10
             stats["max_hp"] += hp_gain
@@ -292,7 +290,6 @@ st.sidebar.subheader("🛡️ 캐릭터 상태창")
 
 stats = st.session_state.stats
 
-# 💡 실시간 반영되는 종족 / 직업 표시창
 st.sidebar.markdown(
     f"👤 **종족**: `{stats['race']}` | **직업**: `{stats['class_name']}`"
 )
@@ -452,7 +449,7 @@ def add_exp(amount):
   return leveled_up
 
 
-# ⚔️ [자동 전투 시뮬레이션 함수]
+# ⚔️ [자동 전투 시뮬레이션 함수 - 치유 스킬 기능 포함]
 def run_automatic_combat(enemy_data):
   player = st.session_state.stats
   enemy = {
@@ -472,6 +469,31 @@ def run_automatic_combat(enemy_data):
   s1_obj = skills_map.get(auto_s1)
   s2_obj = skills_map.get(auto_s2)
 
+  # 💡 스킬 발동 시 적 데미지 + '치유' 키워드가 있으면 플레이어 HP 회복까지 동시에 처리하는 내부 함수
+  def process_skill_turn(sk_obj):
+    player["mp"] -= sk_obj["mp_cost"]
+    base_pow = sk_obj.get("power", 20)
+    stat_bonus = max(player["str"], player["int"]) // 2
+    dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
+    enemy["hp"] = max(0, enemy["hp"] - dmg)
+
+    log_msg = (
+        f"✨ **{sk_obj['name']}** 발동! ({sk_obj['effect']}) "
+        f"**{enemy['name']}**에게 {dmg}의 피해!"
+    )
+
+    # 🌟 스킬 이름에 '치유'가 포함되어 있다면 적 공격과 동시에 플레이어 HP 회복
+    if "치유" in sk_obj["name"]:
+      heal_amount = base_pow + (player["int"] // 2)
+      player["hp"] = min(player["max_hp"], player["hp"] + heal_amount)
+      log_msg += (
+          f" ✨ [신성 가호] HP가 **+{heal_amount}**"
+          f" 회복되었습니다! (내 HP: {player['hp']}/{player['max_hp']})"
+      )
+
+    log_msg += f" (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
+    combat_logs.append(log_msg)
+
   turn = 1
   while enemy["hp"] > 0 and player["hp"] > 0 and turn <= 12:
     combat_logs.append(f"\n--- [전투 턴 {turn}] ---")
@@ -489,28 +511,10 @@ def run_automatic_combat(enemy_data):
       )
 
     elif s1_obj and player["mp"] >= s1_obj["mp_cost"]:
-      player["mp"] -= s1_obj["mp_cost"]
-      base_pow = s1_obj.get("power", 20)
-      stat_bonus = max(player["str"], player["int"]) // 2
-      dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
-      enemy["hp"] = max(0, enemy["hp"] - dmg)
-      combat_logs.append(
-          f"✨ [우선스킬 1] **{s1_obj['name']}** 발동! ({s1_obj['effect']}) "
-          f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP:"
-          f" {enemy['hp']}/{enemy['max_hp']})"
-      )
+      process_skill_turn(s1_obj)
 
     elif s2_obj and player["mp"] >= s2_obj["mp_cost"]:
-      player["mp"] -= s2_obj["mp_cost"]
-      base_pow = s2_obj.get("power", 15)
-      stat_bonus = max(player["str"], player["int"]) // 2
-      dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
-      enemy["hp"] = max(0, enemy["hp"] - dmg)
-      combat_logs.append(
-          f"✨ [우선스킬 2] **{s2_obj['name']}** 발동! ({s2_obj['effect']}) "
-          f"**{enemy['name']}**에게 {dmg}의 피해! (적 남은 HP:"
-          f" {enemy['hp']}/{enemy['max_hp']})"
-      )
+      process_skill_turn(s2_obj)
 
     else:
       dmg = random.randint(8, 16) + (player["str"] // 3)
@@ -686,8 +690,8 @@ else:
                 "mp_cost": 0,
             },
             {
-                "name": "치유의 빛",
-                "effect": "자신의 HP를 회복하며 신성 타격",
+                "name": "치유의 기도",
+                "effect": "적을 공격하며 자신의 HP를 회복",
                 "power": 26,
                 "mp_cost": 10,
             },
@@ -714,13 +718,13 @@ else:
             " 스탯 상승 상품을 구매/판매하거나 골드를 소모할 경우, 차감 또는"
             " 추가된 골드(gold)와 변경된 스탯(int, str, con, agi, hp, mp)의"
             " **최종 계산 수치** 또는 증가치를 반드시 [JSON_UPDATE] 태그에"
-            ' 출력하세요.\n예시: 체력+2 장갑 구매 시 -> [JSON_UPDATE: {"gold":'
-            ' 보유골드-60, "con": +2}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시:'
-            ' [START_COMBAT: {"name": "적 이름", "hp": 40, "atk": 10}]\n2. 상태/스탯'
-            ' 변동 시: [JSON_UPDATE: {"str": 숫자, "int": 숫자, "con": 숫자,'
-            ' "agi": 숫자, "gold": 숫자, "hp": 숫자, "max_hp": 숫자, "mp":'
-            ' 숫자, "max_mp": 숫자, "inventory": [...], "skills": [...]}]\n3.'
-            ' 행동 선택지: [CHOICES: ["선택지1", "선택지2", "선택지3"]]'
+            " 출력하세요.\n예시: 체력+2 장갑 구매 시 -> [JSON_UPDATE: {\"gold\":"
+            " 보유골드-60, \"con\": +2}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시:"
+            " [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n2. 상태/스탯"
+            " 변동 시: [JSON_UPDATE: {\"str\": 숫자, \"int\": 숫자, \"con\": 숫자,"
+            " \"agi\": 숫자, \"gold\": 숫자, \"hp\": 숫자, \"max_hp\": 숫자, \"mp\":"
+            " 숫자, \"max_mp\": 숫자, \"inventory\": [...], \"skills\": [...]}]\n3."
+            " 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
         )
 
         loaded_messages = []
@@ -831,7 +835,7 @@ else:
           ):
             selected_button_prompt = choice
 
-      # 💡 [선택지 아래 10칸 여백 추가]
+      # 💡 [선택지 아래 여백 추가]
       st.markdown(
           "<br><br><br><br><br><br><br><br><br><br>", unsafe_allow_html=True
       )
@@ -878,8 +882,8 @@ else:
               if combat_match:
                 try:
                   combat_data = json.loads(combat_match.group(1))
-                  combat_log_text, victory, reward_gold = run_automatic_combat(
-                      combat_data
+                  combat_log_text, victory, reward_gold = (
+                      run_automatic_combat(combat_data)
                   )
 
                   base_story = clean_tags(bot_response)
@@ -942,7 +946,7 @@ else:
                 except Exception as e:
                   final_output += f"\n\n(전투 처리 중 오류: {e})"
 
-              # 2. 스탯 반영 (스마트 증감 매핑 적용)
+              # 2. 스탯 반영
               matches = re.findall(
                   r"\[JSON_UPDATE:\s*(\{.*?\})\s*\]", final_output, re.DOTALL
               )
