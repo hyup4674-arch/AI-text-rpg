@@ -102,26 +102,39 @@ def smart_update_stats(updated_data):
           diff = int(v)
           stats[target_key] += diff
           if target_key == "con":
-            hp_gain = diff * 10
+            hp_gain = diff * 2
             stats["max_hp"] += hp_gain
             stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+          elif target_key == "int":
+            mp_gain = diff * 2
+            stats["max_mp"] += mp_gain
+            stats["mp"] = min(stats["max_mp"], stats["mp"] + mp_gain)
         elif isinstance(v, str) and (v.startswith("+") or v.startswith("-")):
           try:
             diff = int(v)
             stats[target_key] += diff
             if target_key == "con":
-              hp_gain = diff * 10
+              hp_gain = diff * 2
               stats["max_hp"] += hp_gain
               stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+            elif target_key == "int":
+              mp_gain = diff * 2
+              stats["max_mp"] += mp_gain
+              stats["mp"] = min(stats["max_mp"], stats["mp"] + mp_gain)
           except ValueError:
             pass
         else:
           new_val = int(v)
           if target_key == "con":
             diff = new_val - stats["con"]
-            hp_gain = diff * 10
+            hp_gain = diff * 2
             stats["max_hp"] += hp_gain
             stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
+          elif target_key == "int":
+            diff = new_val - stats["int"]
+            mp_gain = diff * 2
+            stats["max_mp"] += mp_gain
+            stats["mp"] = min(stats["max_mp"], stats["mp"] + mp_gain)
           stats[target_key] = new_val
       elif target_key == "gold":
         if isinstance(v, str) and (v.startswith("+") or v.startswith("-")):
@@ -135,7 +148,17 @@ def smart_update_stats(updated_data):
         stats[target_key] = v
 
 
-# 📊 [캐릭터 종합 스탯 초기화]
+# 💾 [세이브 데이터 저장 및 로드 함수]
+def save_game_state():
+  save_data = {
+      "messages": st.session_state.get("messages", []),
+      "stats": st.session_state.get("stats", {}),
+  }
+  with open(SAVE_FILE, "w", encoding="utf-8") as f:
+    json.dump(save_data, f, ensure_ascii=False)
+
+
+# 📊 [캐릭터 종합 스탯 및 메시지 초기화 (세이브 파일 연동)]
 if "stats" not in st.session_state:
   st.session_state.stats = {
       "race": "미정",
@@ -159,7 +182,23 @@ if "stats" not in st.session_state:
       "skills": [],
   }
 
-# ⚙️ [좌측 사이드바: 게임 설정 및 모델 선택]
+if "messages" not in st.session_state:
+  st.session_state.messages = []
+  if os.path.exists(SAVE_FILE):
+    try:
+      with open(SAVE_FILE, "r", encoding="utf-8") as f:
+        saved_content = json.load(f)
+        if isinstance(saved_content, dict):
+          st.session_state.messages = saved_content.get("messages", [])
+          saved_stats = saved_content.get("stats")
+          if saved_stats:
+            st.session_state.stats = saved_stats
+        elif isinstance(saved_content, list):  # 구버전 세이브 호환성
+          st.session_state.messages = saved_content
+    except Exception:
+      st.session_state.messages = []
+
+# ⚙️ [좌측 사이드바: 게임 설정 및 상태창]
 st.sidebar.header("⚙️ 게임 설정 및 상태창")
 
 api_key_input = st.sidebar.text_input(
@@ -249,7 +288,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 📌 gemini-3.1-flash-lite 무조건 기본 선택
+# 📌 모델 선택 리스트
 default_models = [
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
@@ -305,11 +344,18 @@ st.sidebar.metric(
 )
 st.sidebar.metric(label="💰 보유 골드", value=f"{stats['gold']} G")
 
+attack_power = stats["str"] * 1
+evasion_rate = stats["agi"] * 1
+
 st.sidebar.markdown("##### 📊 캐릭터 능력치")
-st.sidebar.write(f"- 💪 **힘**: {stats['str']}")
-st.sidebar.write(f"- 🧠 **지능**: {stats['int']}")
-st.sidebar.write(f"- ❤️ **체력 스탯**: {stats['con']}")
-st.sidebar.write(f"- ⚡ **민첩**: {stats['agi']}")
+st.sidebar.write(f"- 💪 **힘**: {stats['str']} (공격력: +{attack_power})")
+st.sidebar.write(
+    f"- 🧠 **지능**: {stats['int']} (마나: {stats['mp']}/{stats['max_mp']})"
+)
+st.sidebar.write(
+    f"- ❤️ **체력 스탯**: {stats['con']} (체력: {stats['hp']}/{stats['max_hp']})"
+)
+st.sidebar.write(f"- ⚡ **민첩**: {stats['agi']} (회피율: {evasion_rate}%)")
 
 # ⬆️ [스탯 포인트 투자 UI]
 if stats.get("stat_points", 0) > 0:
@@ -320,29 +366,35 @@ if stats.get("stat_points", 0) > 0:
     if st.sidebar.button("💪 힘 +5", key="btn_add_str", use_container_width=True):
       stats["str"] += 5
       stats["stat_points"] -= 5
+      save_game_state()
       st.rerun()
     if st.sidebar.button(
         "❤️ 체력 +5", key="btn_add_con", use_container_width=True
     ):
       stats["con"] += 5
-      stats["max_hp"] += 20
-      stats["hp"] += 20
+      hp_gain = 5 * 2
+      stats["max_hp"] += hp_gain
+      stats["hp"] = min(stats["max_hp"], stats["hp"] + hp_gain)
       stats["stat_points"] -= 5
+      save_game_state()
       st.rerun()
   with col_s2:
     if st.sidebar.button(
         "🧠 지능 +5", key="btn_add_int", use_container_width=True
     ):
       stats["int"] += 5
-      stats["max_mp"] += 15
-      stats["mp"] += 15
+      mp_gain = 5 * 2
+      stats["max_mp"] += mp_gain
+      stats["mp"] = min(stats["max_mp"], stats["mp"] + mp_gain)
       stats["stat_points"] -= 5
+      save_game_state()
       st.rerun()
     if st.sidebar.button(
         "⚡ 민첩 +5", key="btn_add_agi", use_container_width=True
     ):
       stats["agi"] += 5
       stats["stat_points"] -= 5
+      save_game_state()
       st.rerun()
 
 # ⚔️ [보유 스킬 정보창 및 자동전투 pre-set 설정]
@@ -408,9 +460,10 @@ uploaded_save = st.sidebar.file_uploader("📂 세이브 파일 불러오기", t
 if uploaded_save is not None:
   try:
     uploaded_bytes = uploaded_save.read()
+    parsed = json.loads(uploaded_bytes.decode("utf-8"))
     with open(SAVE_FILE, "wb") as f:
       f.write(uploaded_bytes)
-    st.sidebar.success("✅ 로드 완료!")
+    st.sidebar.success("✅ 로드 완료! 잠시 후 적용됩니다.")
     st.rerun()
   except Exception as e:
     st.sidebar.error(f"로드 실패: {e}")
@@ -441,15 +494,17 @@ def add_exp(amount):
     player["level"] += 1
     player["max_exp"] = int(player["max_exp"] * 1.5)
     player["stat_points"] += 5
-    player["max_hp"] += 15
+    hp_gain = 5 * 2
+    mp_gain = 5 * 2
+    player["max_hp"] += hp_gain
     player["hp"] = player["max_hp"]
-    player["max_mp"] += 10
+    player["max_mp"] += mp_gain
     player["mp"] = player["max_mp"]
     leveled_up = True
   return leveled_up
 
 
-# ⚔️ [자동 전투 시뮬레이션 함수 - 치유 스킬 기능 포함]
+# ⚔️ [자동 전투 시뮬레이션 함수]
 def run_automatic_combat(enemy_data):
   player = st.session_state.stats
   enemy = {
@@ -469,12 +524,15 @@ def run_automatic_combat(enemy_data):
   s1_obj = skills_map.get(auto_s1)
   s2_obj = skills_map.get(auto_s2)
 
-  # 💡 스킬 발동 시 적 데미지 + '치유' 키워드가 있으면 플레이어 HP 회복까지 동시에 처리하는 내부 함수
   def process_skill_turn(sk_obj):
     player["mp"] -= sk_obj["mp_cost"]
     base_pow = sk_obj.get("power", 20)
-    stat_bonus = max(player["str"], player["int"]) // 2
-    dmg = random.randint(max(1, base_pow - 3), base_pow + 5) + stat_bonus
+    attack_power = player["str"]
+    dmg = (
+        random.randint(max(1, base_pow - 3), base_pow + 5)
+        + attack_power
+        + (player["int"] // 3)
+    )
     enemy["hp"] = max(0, enemy["hp"] - dmg)
 
     log_msg = (
@@ -482,13 +540,12 @@ def run_automatic_combat(enemy_data):
         f"**{enemy['name']}**에게 {dmg}의 피해!"
     )
 
-    # 🌟 스킬 이름에 '치유'가 포함되어 있다면 적 공격과 동시에 플레이어 HP 회복
     if "치유" in sk_obj["name"]:
       heal_amount = base_pow + (player["int"] // 2)
       player["hp"] = min(player["max_hp"], player["hp"] + heal_amount)
       log_msg += (
-          f" ✨ [신성 가호] HP가 **+{heal_amount}**"
-          f" 회복되었습니다! (내 HP: {player['hp']}/{player['max_hp']})"
+          f" ✨ [신성 가호] HP가 **+{heal_amount}** 회복되었습니다! (내 HP:"
+          f" {player['hp']}/{player['max_hp']})"
       )
 
     log_msg += f" (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
@@ -506,8 +563,8 @@ def run_automatic_combat(enemy_data):
       heal = 30
       player["hp"] = min(player["max_hp"], player["hp"] + heal)
       combat_logs.append(
-          f"🧪 포션을 마셔 HP가 {heal} 회복되었습니다! (현재"
-          f" HP: {player['hp']}/{player['max_hp']})"
+          f"🧪 포션을 마셔 HP가 {heal} 회복되었습니다! (현재 HP:"
+          f" {player['hp']}/{player['max_hp']})"
       )
 
     elif s1_obj and player["mp"] >= s1_obj["mp_cost"]:
@@ -517,24 +574,34 @@ def run_automatic_combat(enemy_data):
       process_skill_turn(s2_obj)
 
     else:
-      dmg = random.randint(8, 16) + (player["str"] // 3)
+      attack_power = player["str"]
+      dmg = random.randint(8, 16) + attack_power
       enemy["hp"] = max(0, enemy["hp"] - dmg)
       combat_logs.append(
-          f"⚔️ 기본 공격! **{enemy['name']}**에게 {dmg}의 피해를 입혔습니다."
-          f" (적 남은 HP: {enemy['hp']}/{enemy['max_hp']})"
+          f"⚔️ 기본 공격! **{enemy['name']}**에게 {dmg}의 피해를 입혔습니다. (적 남은"
+          f" HP: {enemy['hp']}/{enemy['max_hp']})"
       )
 
     if enemy["hp"] <= 0:
       break
 
-    enemy_dmg = max(
-        1, random.randint(enemy["atk"] - 2, enemy["atk"] + 4) - (player["con"] // 4)
-    )
-    player["hp"] = max(0, player["hp"] - enemy_dmg)
-    combat_logs.append(
-        f"💥 **{enemy['name']}**의 반격! {enemy_dmg}의 피해를 입었습니다. (내"
-        f" 남은 HP: {player['hp']}/{player['max_hp']})"
-    )
+    evasion_rate = player["agi"] * 1
+    if random.randint(1, 100) <= evasion_rate:
+      combat_logs.append(
+          f"💨 **[회피 성공!]** 민첩한 몸놀림으로 **{enemy['name']}**의 공격을"
+          " 피해냈습니다!"
+      )
+    else:
+      enemy_dmg = max(
+          1,
+          random.randint(enemy["atk"] - 2, enemy["atk"] + 4)
+          - (player["con"] // 5),
+      )
+      player["hp"] = max(0, player["hp"] - enemy_dmg)
+      combat_logs.append(
+          f"💥 **{enemy['name']}**의 반격! {enemy_dmg}의 피해를 입었습니다. (내"
+          f" 남은 HP: {player['hp']}/{player['max_hp']})"
+      )
 
     turn += 1
 
@@ -551,15 +618,15 @@ def run_automatic_combat(enemy_data):
     )
     if leveled:
       result_text += (
-          f"\n🎊 **[레벨 업!]** Lv.{player['level']} 달성! 좌측 사이드바에서"
-          " 스탯 포인트(5P)를 분배하세요!"
+          f"\n🎊 **[레벨 업!]** Lv.{player['level']} 달성! 좌측 사이드바에서 스탯"
+          " 포인트(5P)를 분배하세요!"
       )
     return result_text, True, reward_gold
   else:
     player["hp"] = max(10, player["max_hp"] // 4)
     result_text += (
-        "\n\n💀 **[전투 패배]** 부상을 입고 후퇴했습니다. 인근 마을"
-        " 여관에서 간신히 치료를 받았습니다."
+        "\n\n💀 **[전투 패배]** 부상을 입고 후퇴했습니다. 인근 마을 여관에서"
+        " 간신히 치료를 받았습니다."
     )
     return result_text, False, 0
 
@@ -579,16 +646,20 @@ else:
     with col_r1:
       if st.button("👑 인간 (Imperials)", use_container_width=True):
         st.session_state.stats["race"] = "인간"
+        save_game_state()
         st.rerun()
       if st.button("🌿 엘프 (High Elves)", use_container_width=True):
         st.session_state.stats["race"] = "엘프"
+        save_game_state()
         st.rerun()
     with col_r2:
       if st.button("⚒️ 드워프 (Mountain Dwarves)", use_container_width=True):
         st.session_state.stats["race"] = "드워프"
+        save_game_state()
         st.rerun()
       if st.button("🪓 오크 (War Hordes)", use_container_width=True):
         st.session_state.stats["race"] = "오크"
+        save_game_state()
         st.rerun()
 
   # 🌟 [2단계: 직업 선택 인터페이스]
@@ -615,7 +686,6 @@ else:
     if chosen_class:
       st.session_state.stats["class_name"] = chosen_class
 
-      # 직업별 초기 장비 및 스킬 설정
       if chosen_class == "전사":
         st.session_state.stats["equipment"]["무기"] = "강철 단검"
         st.session_state.stats["skills"] = [
@@ -696,6 +766,7 @@ else:
                 "mp_cost": 10,
             },
         ]
+      save_game_state()
       st.rerun()
 
   # 🌟 [본격 게임 시작: Gemini API 연결]
@@ -716,35 +787,42 @@ else:
             " 거래), 정세 파악, 무역/퀘스트를 진행하며 성장합니다.\n\n📍 [상점"
             " 및 스탯/골드 거래 필수 지침]:\n플레이어가 상점에서 아이템이나"
             " 스탯 상승 상품을 구매/판매하거나 골드를 소모할 경우, 차감 또는"
-            " 추가된 골드(gold)와 변경된 스탯(int, str, con, agi, hp, mp)의"
-            " **최종 계산 수치** 또는 증가치를 반드시 [JSON_UPDATE] 태그에"
-            " 출력하세요.\n예시: 체력+2 장갑 구매 시 -> [JSON_UPDATE: {\"gold\":"
-            " 보유골드-60, \"con\": +2,\"체력\": +10}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시:"
-            " [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n2. 상태/스탯"
+            " 추가된 골드(gold)와 변경된 스탯(int, str, con, agi, hp, max_hp,"
+            " mp, max_mp)의 **최종 계산 수치** 또는 증가치를 반드시"
+            " [JSON_UPDATE] 태그에 출력하세요.\n예시: 체력+2 장갑 구매 시 ->"
+            " [JSON_UPDATE: {\"gold\": 보유골드-60, \"con\": +2, \"체력\":"
+            " +4}]\n\n📍 [태그 출력 규칙]:\n1. 교전 시: [START_COMBAT:"
+            " {\"name\": \"적 이름\", \"hp\": 40, \"atk\": 10}]\n2. 상태/스탯"
             " 변동 시: [JSON_UPDATE: {\"str\": 숫자, \"int\": 숫자, \"con\": 숫자,"
             " \"agi\": 숫자, \"gold\": 숫자, \"hp\": 숫자, \"max_hp\": 숫자, \"mp\":"
             " 숫자, \"max_mp\": 숫자, \"inventory\": [...], \"skills\": [...]}]\n3."
             " 행동 선택지: [CHOICES: [\"선택지1\", \"선택지2\", \"선택지3\"]]"
         )
 
-        loaded_messages = []
-        if os.path.exists(SAVE_FILE):
-          try:
-            with open(SAVE_FILE, "r", encoding="utf-8") as f:
-              loaded_messages = json.load(f)
-          except Exception:
-            loaded_messages = []
+        api_history = []
+        for msg in st.session_state.messages:
+          r = (
+              "model"
+              if msg["role"] == "assistant"
+              else ("user" if msg["role"] == "user" else None)
+          )
+          if r:
+            api_history.append(
+                types.Content(
+                    role=r, parts=[types.Part.from_text(text=msg["content"])]
+                )
+            )
 
-        st.session_state.messages = loaded_messages
+        st.session_state.chat_session = st.session_state.client.chats.create(
+            model=selected_model,
+            history=api_history if api_history else None,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.85,
+            ),
+        )
 
         if not st.session_state.messages:
-          st.session_state.chat_session = st.session_state.client.chats.create(
-              model=selected_model,
-              config=types.GenerateContentConfig(
-                  system_instruction=system_instruction,
-                  temperature=0.85,
-              ),
-          )
           with st.spinner(
               f"[{selected_model}] 에델가르드 대륙의 세력 정세를 생성하는"
               " 중입니다..."
@@ -775,32 +853,7 @@ else:
                     f" {p_class}]**\n\n{bot_response}"
                 ),
             }]
-
-            with open(SAVE_FILE, "w", encoding="utf-8") as f:
-              json.dump(st.session_state.messages, f, ensure_ascii=False)
-        else:
-          api_history = []
-          for msg in st.session_state.messages:
-            r = (
-                "model"
-                if msg["role"] == "assistant"
-                else ("user" if msg["role"] == "user" else None)
-            )
-            if r:
-              api_history.append(
-                  types.Content(
-                      role=r, parts=[types.Part.from_text(text=msg["content"])]
-                  )
-              )
-
-          st.session_state.chat_session = st.session_state.client.chats.create(
-              model=selected_model,
-              history=api_history if api_history else None,
-              config=types.GenerateContentConfig(
-                  system_instruction=system_instruction,
-                  temperature=0.85,
-              ),
-          )
+            save_game_state()
 
       # 📖 [채팅 히스토리 렌더링]
       for message in st.session_state.messages:
@@ -864,7 +917,7 @@ else:
                   f" {cur_stats['gold']}G, 레벨: {cur_stats['level']},"
                   f" 힘:{cur_stats['str']}, 지능:{cur_stats['int']},"
                   f" 체력스탯:{cur_stats['con']}, 민첩:{cur_stats['agi']},"
-                  " 인벤토리:"
+                  f" 인벤토리:"
                   f" {json.dumps(cur_stats['inventory'], ensure_ascii=False)}]\n플레이어"
                   f" 행동: {user_prompt}"
               )
@@ -961,11 +1014,7 @@ else:
               st.session_state.messages.append(
                   {"role": "assistant", "content": final_output}
               )
-
-              with open(SAVE_FILE, "w", encoding="utf-8") as f:
-                json.dump(
-                    st.session_state.messages, f, ensure_ascii=False
-                )
+              save_game_state()
 
               st.rerun()
 
