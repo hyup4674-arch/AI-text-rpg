@@ -469,25 +469,25 @@ else:
             elif chosen_class == "마법사":
                 st.session_state.stats["equipment"]["무기"] = "수습 마법봉"
                 st.session_state.stats["skills"] = [
-                    {"name": "마력 화살", "effect": "기본 원거리 마법 타격", "power": 18, "mp_cost": 4},
+                    {"name": "마력 화살", "effect": "기본 원거리 마법 타격", "power": 15, "mp_cost": 0},
                     {"name": "화염구", "effect": "강력한 화염 속성 마법 타격", "power": 38, "mp_cost": 12}
                 ]
             elif chosen_class == "궁수":
                 st.session_state.stats["equipment"]["무기"] = "목재 단궁"
                 st.session_state.stats["skills"] = [
-                    {"name": "정밀 사격", "effect": "급소를 노리는 원거리 관통 사격", "power": 20, "mp_cost": 3},
+                    {"name": "정밀 사격", "effect": "급소를 노리는 원거리 관통 사격", "power": 15, "mp_cost": 0},
                     {"name": "연사", "effect": "빠른 속도의 연속 화살 사격", "power": 34, "mp_cost": 9}
                 ]
             elif chosen_class == "도적":
                 st.session_state.stats["equipment"]["무기"] = "쌍 단검"
                 st.session_state.stats["skills"] = [
-                    {"name": "기습", "effect": "적의 허점을 찌르는 치명타 공격", "power": 22, "mp_cost": 4},
+                    {"name": "기습", "effect": "적의 허점을 찌르는 치명타 공격", "power": 15, "mp_cost": 0},
                     {"name": "독침 베기", "effect": "독을 바른 단검으로 물리 타격", "power": 35, "mp_cost": 10}
                 ]
             elif chosen_class == "성직자":
                 st.session_state.stats["equipment"]["무기"] = "나무 메이스"
                 st.session_state.stats["skills"] = [
-                    {"name": "신성한 타격", "effect": "신력 기반의 타격 물리 공격", "power": 16, "mp_cost": 3},
+                    {"name": "신성한 타격", "effect": "신력 기반의 타격 물리 공격", "power": 15, "mp_cost": 0},
                     {"name": "치유의 빛", "effect": "자신의 HP를 회복하며 신성 타격", "power": 26, "mp_cost": 10}
                 ]
             st.rerun()
@@ -597,6 +597,9 @@ else:
                 for idx, choice in enumerate(current_choices):
                     if st.button(f"👉 {choice}", key=f"btn_{len(st.session_state.messages)}_{idx}", use_container_width=True):
                         selected_button_prompt = choice
+
+            # 💡 [선택지 아래 3칸 여백 추가]
+  st.markdown("<br><br><br>", unsafe_allow_html=True)
 
             chat_input_prompt = st.chat_input("또는 직접 행동을 작성하세요...")
             user_prompt = selected_button_prompt or chat_input_prompt
