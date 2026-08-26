@@ -182,6 +182,7 @@ st.sidebar.metric(label="✨ 경험치 (EXP)", value=f"{stats['exp']} / {stats['
 st.sidebar.metric(label="❤️ 체력 (HP)", value=f"{stats['hp']} / {stats['max_hp']}")
 st.sidebar.metric(label="💙 마나 (MP)", value=f"{stats['mp']} / {stats['max_mp']}")
 st.sidebar.metric(label="💰 보유 골드", value=f"{stats['gold']} G")
+st.sidebar.metric(label="🛡️ 보유 스킬 ", value=f"{stats['공격력/mp소모']} G")
 
 st.sidebar.markdown("##### 📊 캐릭터 능력치")
 st.sidebar.write(f"- 💪 **힘**: {stats['str']}")
