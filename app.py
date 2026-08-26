@@ -599,7 +599,7 @@ else:
                         selected_button_prompt = choice
 
             # 💡 [선택지 아래 3칸 여백 추가]
-  st.markdown("<br><br><br>", unsafe_allow_html=True)
+            st.markdown("<br><br><br>", unsafe_allow_html=True)
 
             chat_input_prompt = st.chat_input("또는 직접 행동을 작성하세요...")
             user_prompt = selected_button_prompt or chat_input_prompt
