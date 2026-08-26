@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field
 
 # 🔑 [API 키 입력 설정]
 DEFAULT_API_KEY = ""
-SAVE_FILE = "rpg_freeform_save.json"
+SAVE_FILE = "rpg_sync_text_save.json"
 
 st.set_page_config(
-    page_title="에델가르드 패권전 - 자유형 AI RPG", page_icon="⚔️", layout="wide"
+    page_title="에델가르드 패권전 - 동기화 텍스트 RPG", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 에델가르드: 자유형 AI 판타지 RPG")
+st.title("⚔️ 에델가르드: 상태 텍스트 실시간 동기화 RPG")
 st.markdown(
-    "고정된 스탯과 형식 없이, AI가 모든 상태와 스킬을 자유롭게 빚어내는 온전한 서사 중심 RPG입니다."
+    "AI가 매 턴마다 갱신하는 캐릭터 상태 정보 블록을 좌측 슬라이드바에 그대로 반영하는 판타지 RPG입니다."
 )
 
 # 🎨 [스크롤 위치 복원 JS]
@@ -24,7 +24,7 @@ st.markdown(
         (function() {
             const pWin = window.parent || window;
             const pDoc = pWin.document;
-            const SCROLL_KEY = 'rpg_scroll_freeform';
+            const SCROLL_KEY = 'rpg_sync_text_scroll';
             function getScrollContainer() {
                 return pDoc.querySelector('[data-testid="stAppViewContainer"]') || pDoc.querySelector('.main') || pWin;
             }
@@ -52,35 +52,40 @@ st.markdown(
 )
 
 
-# 📋 [AI가 자유롭게 상태와 스킬을 정의할 수 있는 Pydantic 스키마]
-class FreeformRPGResponse(BaseModel):
+# 📋 [AI 응답 스키마: 서사와 상태 동기화 텍스트를 함께 반환]
+class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="플레이어의 행동에 따른 상세하고 흥미진진한 스토리 서사 묘사."
+        description="플레이어의 행동에 따른 상세하고 몰입감 있는 스토리 서사 묘사."
     )
-    sidebar_status_text: str = Field(
+    status_sync_text: str = Field(
         description=(
-            "사이드바에 그대로 표시될 캐릭터의 현재 상태 요약 (예: 체력 상태,"
-            " 입은 옷, 현재 기분, 소지품 등 AI가 자유롭게 서술)"
-        )
-    )
-    current_skills: list[str] = Field(
-        description=(
-            "현재 캐릭터가 사용할 수 있거나 새롭게 깨달은 스킬, 특기, 마법의"
-            " 목록 (AI가 자유롭게 추가/수정 가능)"
+            "현재 캐릭터의 상태를 보여주는 텍스트 블록. 예시 형식:\n"
+            "종족: 엘프\n"
+            "직업: 마법사\n"
+            "레벨: 1 (경험치: 0/100)\n"
+            "체력(HP): 60/60\n"
+            "마나(MP): 30/30\n"
+            "골드: 20G\n"
+            "장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n"
+            "인벤토리: [\"체력 포션 (소)\", \"마력 회복의 반지\"]\n"
+            "변동 사항이 생길 때마다 수치, 골드, 인벤토리를 정확하게 갱신하여 작성하세요."
         )
     )
     choices: list[str] = Field(
-        description="플레이어가 다음에 선택할 수 있는 행동 지침 3~4가지"
+        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지"
     )
 
 
 # 💾 [세이브 및 로드 관리]
 def save_game():
     data = {
-        "sidebar_status": st.session_state.get(
-            "sidebar_status", "모험을 준비 중입니다."
+        "status_sync_text": st.session_state.get(
+            "status_sync_text",
+            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP):"
+            " 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의"
+            ' 무기", "갑옷": "여행자 가죽옷"}\n인벤토리: ["체력 포션 (소)", "체력 포션'
+            ' (소)"]',
         ),
-        "skills_list": st.session_state.get("skills_list", ["기본 주먹질"]),
         "history": st.session_state.get("history", []),
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
@@ -96,18 +101,22 @@ if os.path.exists(SAVE_FILE):
     except Exception:
         pass
 
-if "sidebar_status" not in st.session_state:
-    st.session_state.sidebar_status = (
-        saved_data.get("sidebar_status", "아직 여정을 시작하지 않았습니다.")
-        if saved_data
-        else "아직 여정을 시작하지 않았습니다."
-    )
+default_sync_text = (
+    "종족: 미정\n"
+    "직업: 미정\n"
+    "레벨: 1 (경험치: 0/100)\n"
+    "체력(HP): 60/60\n"
+    "마나(MP): 30/30\n"
+    "골드: 50G\n"
+    '장착 장비: {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷"}\n'
+    '인벤토리: ["체력 포션 (소)", "체력 포션 (소)"]'
+)
 
-if "skills_list" not in st.session_state:
-    st.session_state.skills_list = (
-        saved_data.get("skills_list", ["기본 주먹질"])
+if "status_sync_text" not in st.session_state:
+    st.session_state.status_sync_text = (
+        saved_data.get("status_sync_text", default_sync_text)
         if saved_data
-        else ["기본 주먹질"]
+        else default_sync_text
     )
 
 if "history" not in st.session_state:
@@ -116,8 +125,8 @@ if "history" not in st.session_state:
     )
 
 
-# ⚙️ [사이드바 상태창 UI (고정 형식 제거, AI 출력 내용 반영)]
-st.sidebar.header("⚙️ 게임 설정 및 AI 상태창")
+# ⚙️ [사이드바 UI: AI가 전달한 동기화 텍스트를 그대로 출력]
+st.sidebar.header("⚙️ 게임 설정 및 상태창")
 api_key_input = st.sidebar.text_input(
     "Google Gemini API 키 입력", value=DEFAULT_API_KEY, type="password"
 )
@@ -144,13 +153,10 @@ selected_model = st.sidebar.selectbox(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🛡️ AI가 기록하는 캐릭터 상태")
-st.sidebar.info(st.session_state.sidebar_status)
+st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("✨ 현재 보유 스킬 및 특기")
-for sk in st.session_state.skills_list:
-    st.sidebar.markdown(f"- 🗡️ {sk}")
+# 사용자가 요청한 대로 AI가 제공한 동기화 내용을 코드 가공 없이 그대로 표시
+st.sidebar.text(st.session_state.status_sync_text)
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🔄 전체 초기화 및 새 게임"):
@@ -162,18 +168,26 @@ if st.sidebar.button("🔄 전체 초기화 및 새 게임"):
 
 
 # 🤖 [AI 호출 함수]
-def call_gemini_freeform(user_action):
+def call_gemini_sync_text(user_action):
     client = genai.Client(api_key=api_key_input)
 
     system_instruction = (
-        "당신은 에델가르드 판타지 RPG의 창의적인 게임 마스터(GM)입니다.\n"
-        "고정된 수치나 스탯 규칙에 얽매이지 말고, 플레이어의 행동에 따라 서사를 풍부하게 전개하세요.\n"
-        "현재 캐릭터 상태(sidebar_status_text)와 보유 스킬(current_skills)을 상황에 맞게 자유롭게 갱신하고 수정해주세요."
+        "당신은 에델가르드 판타지 RPG의 게임 마스터(GM)입니다.\n"
+        "플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
+        "status_sync_text 형식 예시:\n"
+        "종족: 엘프\n"
+        "직업: 마법사\n"
+        "레벨: 1 (경험치: 0/100)\n"
+        "체력(HP): 60/60\n"
+        "마나(MP): 30/30\n"
+        "골드: 20G\n"
+        "장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n"
+        "인벤토리: [\"체력 포션 (소)\", \"마력 회복의 반지\"]\n\n"
+        "아이템 구매, 골드 변동, 체력/마나 소모, 아이템 획득 등이 발생할 때마다 status_sync_text 내부의 수치와 리스트를 정확하게 반영해 주세요."
     )
 
     prompt = (
-        f"[현재 사이드바에 표시 중인 상태]\n{st.session_state.sidebar_status}\n\n"
-        f"[현재 보유 중인 스킬 목록]\n{st.session_state.skills_list}\n\n"
+        f"[현재 캐릭터 상태 동기화 정보]\n{st.session_state.status_sync_text}\n\n"
         f"최근 대화 기록:\n"
         + json.dumps(st.session_state.history[-6:], ensure_ascii=False)
         + f"\n\n플레이어의 행동 또는 선택: {user_action}"
@@ -186,11 +200,11 @@ def call_gemini_freeform(user_action):
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=FreeformRPGResponse,
-                temperature=0.8,
+                response_schema=SyncTextRPGResponse,
+                temperature=0.7,
             ),
         )
-        return FreeformRPGResponse.model_validate_json(response.text)
+        return SyncTextRPGResponse.model_validate_json(response.text)
     except Exception as e:
         st.error(f"Gemini API 호출 오류: {e}")
         return None
@@ -200,15 +214,14 @@ def call_gemini_freeform(user_action):
 if not api_key_input:
     st.warning("⚠️ 좌측 사이드바에 Google Gemini API 키를 입력해 주세요.")
 else:
-    # 아직 시작 대화가 없다면 오프닝 생성 트리거
+    # 아직 기록이 없으면 오프닝 생성 트리거
     if not st.session_state.history:
         with st.spinner("에델가르드 대륙의 세계를 여는 중..."):
-            res = call_gemini_freeform(
-                "에델가르드 대륙의 크로스로드 도시 여관에서 모험을 시작하려고 한다. 캐릭터의 첫 설정과 오프닝을 자유롭게 열어줘."
+            res = call_gemini_sync_text(
+                "엘프 종족 마법사 직업으로 크로스로드 도시 여관에서 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
             )
             if res:
-                st.session_state.sidebar_status = res.sidebar_status_text
-                st.session_state.skills_list = res.current_skills
+                st.session_state.status_sync_text = res.status_sync_text
                 st.session_state.history.append({
                     "role": "assistant",
                     "narrative": res.narrative,
@@ -223,7 +236,7 @@ else:
             with st.chat_message(h["role"]):
                 st.markdown(h.get("narrative", ""))
 
-        # 마지막 응답의 선택지 버튼 제공
+        # 선택지 버튼 제공
         current_choices = []
         if st.session_state.history:
             last_h = st.session_state.history[-1]
@@ -250,13 +263,12 @@ else:
             with st.chat_message("user"):
                 st.markdown(final_input)
 
-            with st.spinner("게임 마스터가 서사를 구상하는 중..."):
-                res = call_gemini_freeform(final_input)
+            with st.spinner("게임 마스터가 처리 중..."):
+                res = call_gemini_sync_text(final_input)
 
                 if res:
-                    # AI가 입력해준 상태와 스킬을 그대로 사이드바에 반영
-                    st.session_state.sidebar_status = res.sidebar_status_text
-                    st.session_state.skills_list = res.current_skills
+                    # AI가 생성한 동기화 텍스트 블록을 그대로 세션에 반영
+                    st.session_state.status_sync_text = res.status_sync_text
 
                     # 스토리 기록 추가
                     st.session_state.history.append({
@@ -265,7 +277,7 @@ else:
                         "choices": res.choices,
                     })
 
-                    # 최근 기록 유지
+                    # 최근 6개 기록만 유지
                     if len(st.session_state.history) > 6:
                         st.session_state.history = st.session_state.history[
                             -6:
