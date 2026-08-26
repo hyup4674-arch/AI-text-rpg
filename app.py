@@ -300,7 +300,7 @@ for sk in stats["skills"]:
       f"🗡️ **{sk['name']}** (위력:{sk['power']}, MP:{sk['mp_cost']})"
   )
 
-# 🛡️ [장착 장비 및 인벤토리 표시 섹션 (스크롤 컨테이너 적용으로 전체 표시)]
+# 🛡️ [장착 장비 및 인벤토리 표시 섹션 (스크롤 컨테이너 적용)]
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚔️ 장착 장비")
 equipment = stats.get(
@@ -311,7 +311,6 @@ for slot, gear_name in equipment.items():
 
 st.sidebar.subheader("🎒 인벤토리 (전체 목록)")
 inventory = stats.get("inventory", [])
-# 스크롤 가능한 컨테이너를 사용하여 아이템이 많아져도 전부 스크롤해서 볼 수 있도록 설정
 with st.sidebar.container(height=160):
   if inventory:
     for inv_item in inventory:
@@ -368,6 +367,9 @@ def clean_tags(text):
   text = re.sub(r"\[START_COMBAT:\s*(\{.*?\})\s*\]", "", text, flags=re.DOTALL)
   text = re.sub(r"\[CHOICES:\s*(\[.*?\])\s*\]", "", text, flags=re.DOTALL)
   text = re.sub(r"\[ITEM_GAIN:\s*\"(.*?)\"\s*\]", "", text, flags=re.DOTALL)
+  text = re.sub(
+      r"\[GOLD_CHANGE:\s*-?\d+\s*\]", "", text, flags=re.DOTALL
+  )  # 골드 태그 정화 추가
   return text.strip()
 
 
@@ -609,7 +611,7 @@ else:
       st.session_state.client = genai.Client(api_key=api_key_input)
       st.session_state.current_model = selected_model
 
-      # 🚨 [시스템 지시문: 좌측 상태창과 완벽한 동기화 강제 규정]
+      # 🚨 [시스템 지시문: 골드 연동 규칙 추가]
       sys_inst = (
           "당신은 에델가르드 대륙의 게임 마스터(GM)입니다.\n"
           "플레이어의 탐험, 마을 활동, 상점 거래 등에 대해 서사를 제공합니다.\n\n"
@@ -617,8 +619,9 @@ else:
           "1. 매 턴 제공되는 '[현재 캐릭터 상태 동기화 정보]'에 포함된 레벨, HP, MP, 골드, 장비, 인벤토리 등 모든 수치는 좌측 상태창과 100% 동일합니다.\n"
           "2. 플레이어의 레벨이나 스탯을 절대 임의로 변경하거나 왜곡해서 서사하지 마세요. (상태창의 레벨과 수치를 절대적인 진실로 따르세요.)\n"
           "3. 플레이어가 아이템을 획득하는 경우 응답에 반드시 [ITEM_GAIN: \"아이템이름\"] 태그를 포함하세요.\n"
-          "4. 플레이어가 전투를 유발하는 행동을 하면 응답 끝에 반드시 [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 45, \"atk\": 11}] 태그를 넣어 적을 생성하세요.\n"
-          "5. 항상 응답 마지막에 3~4개의 행동 선택지를 [CHOICES: [\"선택지1\", \"선택지2\"]] 형태로 제시하세요."
+          "4. 플레이어가 골드를 획득하거나 소비(구매, 보상, 퀘스트 등)하는 경우 응답에 반드시 [GOLD_CHANGE: 수치] 태그를 포함하세요. (예: 50골드 획득 시 [GOLD_CHANGE: 50], 20골드 소비 시 [GOLD_CHANGE: -20])\n"
+          "5. 플레이어가 전투를 유발하는 행동을 하면 응답 끝에 반드시 [START_COMBAT: {\"name\": \"적 이름\", \"hp\": 45, \"atk\": 11}] 태그를 넣어 적을 생성하세요.\n"
+          "6. 항상 응답 마지막에 3~4개의 행동 선택지를 [CHOICES: [\"선택지1\", \"선택지2\"]] 형태로 제시하세요."
       )
 
       api_history = [
@@ -835,6 +838,7 @@ else:
               )
               bot_reply = response.text
 
+              # 아이템 획득 태그 처리
               item_gain_match = re.search(
                   r"\[ITEM_GAIN:\s*\"(.*?)\"\s*\]", bot_reply
               )
@@ -843,6 +847,16 @@ else:
                 stats["inventory"].append(acquired_item)
                 auto_equip_items()
                 bot_reply += f"\n\n✨ **[획득 및 장착 완료]** '{acquired_item}'을(를) 획득하여 자동 장착되거나 인벤토리에 보관되었습니다!"
+
+              # 💰 골드 변동 태그 처리 (새로 추가된 연동 로직)
+              gold_change_match = re.search(
+                  r"\[GOLD_CHANGE:\s*(-?\d+)\s*\]", bot_reply
+              )
+              if gold_change_match:
+                gold_delta = int(gold_change_match.group(1))
+                stats["gold"] = max(0, stats["gold"] + gold_delta)
+                save_game()
+                bot_reply += f"\n\n💰 **[골드 변동]** {abs(gold_delta)}G가 {'획득' if gold_delta > 0 else '소모'}되었습니다! (현재 골드: {stats['gold']}G)"
 
               combat_match = re.search(
                   r"\[START_COMBAT:\s*(\{.*?\})\s*\]", bot_reply, re.DOTALL
