@@ -165,16 +165,16 @@ else:
 
 font_size = st.sidebar.slider("🔤 글자 크기", 12, 26, 16, 1)
 
-# 🎨 스타일 정의 (채팅 및 선택지 버튼 글자 크기 확대 적용)
+# 🎨 스타일 정의 (채팅 및 선택지 버튼 글자 크기를 슬라이더에 연동하여 확실하게 확대)
 st.markdown(
     f"""
     <style>
         .stChatMessage p, .stChatMessage div {{ font-size: {font_size}px !important; line-height: 1.6 !important; }}
         div.stButton > button {{
-            font-size: {font_size + 3}px !important;
+            font-size: {font_size + 6}px !important;
             font-weight: bold !important;
-            padding-top: 12px !important;
-            padding-bottom: 12px !important;
+            padding-top: 14px !important;
+            padding-bottom: 14px !important;
         }}
     </style>
     """,
@@ -347,13 +347,13 @@ else:
         for idx, h in enumerate(st.session_state.history):
             with st.chat_message(h["role"]):
                 st.markdown(h.get("narrative", ""))
-                # 🔊 AI 서사 내용에 대한 한국어 음성 출력 버튼 추가
+                # 🔊 브라우저 가비지 컬렉션 방지 변수 할당을 통한 한국어 음성 출력 수정
                 if h["role"] == "assistant":
                     narrative_text = h.get("narrative", "")
                     safe_text = narrative_text.replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
                     st.markdown(
                         f"""
-                        <button onclick="window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('{safe_text}'); u.lang='ko-KR'; window.speechSynthesis.speak(u);" 
+                        <button onclick="window.speechSynthesis.cancel(); window._currentUtterance = new SpeechSynthesisUtterance('{safe_text}'); window._currentUtterance.lang='ko-KR'; window.speechSynthesis.speak(window._currentUtterance);" 
                                 style="background-color: #262730; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 8px; margin-bottom: 5px;">
                             🔊 음성으로 듣기
                         </button>
