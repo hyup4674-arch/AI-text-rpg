@@ -60,7 +60,7 @@ class SyncTextRPGResponse(BaseModel):
     )
     status_sync_text: str = Field(
         description=(
-            "현재 캐릭터의 상태를 보여주는 텍스트 블록. 따옴표나 괄호 없이 깔끔하게 작성하세요. 예시 형식:\n"
+            "현재 캐릭터의 상태를 보여주는 텍스트 블록. 반드시 항목별로 줄바꿈을 포함하여 작성하세요. 예시 형식:\n"
             "종족: 엘프\n"
             "직업: 마법사\n"
             "레벨: 1 (경험치: 0/100)\n"
@@ -177,7 +177,7 @@ st.markdown(
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
 
-# 🧹 큰따옴표 및 불필요한 기호 제거 후 사이드바 출력
+# 🧹 큰따옴표/괄호 제거 및 항목별 강제 줄바꿈 처리
 clean_status = (
     st.session_state.status_sync_text
     .replace('"', '')
@@ -186,6 +186,14 @@ clean_status = (
     .replace('[', '')
     .replace(']', '')
 )
+
+keys_to_break = [
+    "직업:", "레벨:", "체력(HP):", "마나(MP):", 
+    "골드:", "장착 장비:", "인벤토리:", "사용가능한 마법 및 기술:"
+]
+for key in keys_to_break:
+    clean_status = clean_status.replace(key, f"\n{key}")
+
 st.sidebar.text(clean_status)
 
 # 💾 [세이브 파일 관리 섹션 추가]
@@ -247,7 +255,7 @@ def call_ai_sync_text(user_action):
     system_instruction = (
         "당신은 판타지 RPG의 게임 마스터(GM)입니다.\n"
         "인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
-        "status_sync_text 형식 예시 (따옴표나 중/대괄호 없이 작성):\n"
+        "status_sync_text 형식 예시 (따옴표나 중/대괄호 없이, 각 항목별로 줄바꿈을 철저히 지켜서 작성):\n"
         "종족: 엘프\n"
         "직업: 마법사\n"
         "레벨: 1 (경험치: 0/100)\n"
