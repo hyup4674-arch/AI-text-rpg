@@ -274,10 +274,10 @@ else:
                         "choices": res.choices,
                     })
 
-                    # 최근 6개 기록만 유지
+                    # 최근 2개 기록만 유지
                     if len(st.session_state.history) > 2:
                         st.session_state.history = st.session_state.history[
-                            -6:
+                            -2:
                         ]
 
                     save_game()
