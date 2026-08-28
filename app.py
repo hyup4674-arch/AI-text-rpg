@@ -321,8 +321,8 @@ else:
                         i for i, h in enumerate(st.session_state.history) 
                         if h["role"] == "assistant"
                     ]
-                    if len(assistant_indices) > 2:
-                        start_idx = assistant_indices[-2]
+                    if len(assistant_indices) > 1:
+                        start_idx = assistant_indices[-1]
                         st.session_state.history = st.session_state.history[start_idx:]
 
                     save_game()
