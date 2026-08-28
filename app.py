@@ -81,10 +81,7 @@ def save_game():
     data = {
         "status_sync_text": st.session_state.get(
             "status_sync_text",
-            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP):"
-            " 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의"
-            ' 무기", "갑옷": "여행자 가죽옷"}\n인벤토리: ["체력 포션 (소)", "체력 포션'
-            ' (소)"]',
+            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP): 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n인벤토리: [\"체력 포션 (소)\", \"체력 포션 (소)\"]",
         ),
         "history": st.session_state.get("history", []),
     }
@@ -125,7 +122,7 @@ if "history" not in st.session_state:
     )
 
 
-# ⚙️ [사이드바 UI: AI가 전달한 동기화 텍스트를 그대로 출력]
+# ⚙️ [사이드바 UI]
 st.sidebar.header("⚙️ 게임 설정 및 상태창")
 api_key_input = st.sidebar.text_input(
     "Google Gemini API 키 입력", value=DEFAULT_API_KEY, type="password"
@@ -141,18 +138,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-selected_model = st.sidebar.selectbox(
-    "Gemini 모델 선택",
-    options=[
-        "gemini-3.1-flash-lite",
-    ],
-    index=0,
-)
+# 모델은 3.1 라이트 버전으로만 고정
+selected_model = "gemini-3.1-flash-lite"
+st.sidebar.text(f"사용 모델: {selected_model}")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
-
-# 사용자가 요청한 대로 AI가 제공한 동기화 내용을 코드 가공 없이 그대로 표시
 st.sidebar.text(st.session_state.status_sync_text)
 
 st.sidebar.markdown("---")
@@ -211,7 +202,6 @@ def call_gemini_sync_text(user_action):
 if not api_key_input:
     st.warning("⚠️ 좌측 사이드바에 Google Gemini API 키를 입력해 주세요.")
 else:
-    # 아직 기록이 없으면 오프닝 생성 트리거
     if not st.session_state.history:
         with st.spinner("에델가르드 대륙의 세계를 여는 중..."):
             res = call_gemini_sync_text(
@@ -228,12 +218,10 @@ else:
                 st.rerun()
 
     else:
-        # 대화 기록 출력
         for h in st.session_state.history:
             with st.chat_message(h["role"]):
                 st.markdown(h.get("narrative", ""))
 
-        # 선택지 버튼 제공
         current_choices = []
         if st.session_state.history:
             last_h = st.session_state.history[-1]
@@ -264,21 +252,22 @@ else:
                 res = call_gemini_sync_text(final_input)
 
                 if res:
-                    # AI가 생성한 동기화 텍스트 블록을 그대로 세션에 반영
                     st.session_state.status_sync_text = res.status_sync_text
 
-                    # 스토리 기록 추가
                     st.session_state.history.append({
                         "role": "assistant",
                         "narrative": res.narrative,
                         "choices": res.choices,
                     })
 
-                    # 최근 2개 기록만 유지
-                    if len(st.session_state.history) > 2:
-                        st.session_state.history = st.session_state.history[
-                            -2:
-                        ]
+                    # AI 메시지(assistant)가 최근 2개까지만 유지되도록 필터링
+                    assistant_indices = [
+                        i for i, h in enumerate(st.session_state.history) 
+                        if h["role"] == "assistant"
+                    ]
+                    if len(assistant_indices) > 2:
+                        start_idx = assistant_indices[-2]
+                        st.session_state.history = st.session_state.history[start_idx:]
 
                     save_game()
                     st.rerun()
