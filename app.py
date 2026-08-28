@@ -145,8 +145,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-selected_model = "gemini-3.1-flash-lite"
-st.sidebar.text(f"사용 모델: {selected_model}")
+# 기존 고정 텍스트 대신 selectbox로 변경
+selected_model = st.sidebar.selectbox(
+    "Gemini 모델 선택",
+    options=[
+        "gemini-3.1-flash-lite",
+        "gemini-3.2-flash-lite",
+        "gemini-3.3-flash-lite",
+        "gemini-3.4-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash-lite",
+    ],
+    index=0,
+)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
