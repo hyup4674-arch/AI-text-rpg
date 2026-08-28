@@ -5,9 +5,10 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-# 🔑 [API 키 입력 설정]
+# 🔑 [API 키 및 파일 설정]
 DEFAULT_API_KEY = ""
 SAVE_FILE = "rpg_sync_text_save.json"
+LOG_FILE = "rpg_story_log.txt"  # 전체 AI 서사 기록용 TXT 파일
 
 st.set_page_config(
     page_title="에델가르드 패권전 - 동기화 텍스트 RPG", page_icon="⚔️", layout="wide"
@@ -52,7 +53,7 @@ st.markdown(
 )
 
 
-# 📋 [AI 응답 스키마: 서사와 상태 동기화 텍스트를 함께 반환]
+# 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
         description="플레이어의 행동에 따른 상세하고 몰입감 있는 스토리 서사 묘사."
@@ -87,6 +88,12 @@ def save_game():
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
+
+
+# 📝 [AI 텍스트 로그 파일 누적 저장 함수]
+def append_ai_log(narrative):
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{narrative}\n\n" + "-" * 50 + "\n\n")
 
 
 # 📊 [세션 초기화]
@@ -138,7 +145,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 모델은 3.1 라이트 버전으로만 고정
 selected_model = "gemini-3.1-flash-lite"
 st.sidebar.text(f"사용 모델: {selected_model}")
 
@@ -146,10 +152,58 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
 st.sidebar.text(st.session_state.status_sync_text)
 
+# 💾 [세이브 파일 관리 섹션 추가]
 st.sidebar.markdown("---")
-if st.sidebar.button("🔄 전체 초기화 및 새 게임"):
+st.sidebar.subheader("💾 세이브 & 로드 관리")
+
+# 1. 현재 게임 상태 다운로드 (수동 저장)
+if os.path.exists(SAVE_FILE):
+    with open(SAVE_FILE, "r", encoding="utf-8") as f:
+        json_data_str = f.read()
+    st.sidebar.download_button(
+        label="📥 게임 상태 파일 저장 (다운로드)",
+        data=json_data_str,
+        file_name="rpg_sync_text_save.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+# 2. 저장된 게임 파일 업로드 (불러오기)
+uploaded_file = st.sidebar.file_uploader(
+    "📂 세이브 파일 불러오기 (업로드)", type=["json"]
+)
+if uploaded_file is not None:
+    try:
+        loaded_data = json.load(uploaded_file)
+        if "status_sync_text" in loaded_data and "history" in loaded_data:
+            st.session_state.status_sync_text = loaded_data["status_sync_text"]
+            st.session_state.history = loaded_data["history"]
+            save_game()  # 서버 환경에도 동기화 저장
+            st.sidebar.success("🎉 게임을 성공적으로 불러왔습니다!")
+            st.rerun()
+        else:
+            st.sidebar.error("❌ 올바르지 않은 세이브 파일 형식입니다.")
+    except Exception as e:
+        st.sidebar.error(f"❌ 파일을 읽는 중 오류 발생: {e}")
+
+# 3. 전체 스토리 로그(TXT) 다운로드 버튼
+if os.path.exists(LOG_FILE):
+    with open(LOG_FILE, "r", encoding="utf-8") as f:
+        log_data_str = f.read()
+    st.sidebar.download_button(
+        label="📜 전체 스토리 로그 다운로드 (TXT)",
+        data=log_data_str,
+        file_name="rpg_story_log.txt",
+        mime="text/plain",
+        use_container_width=True,
+    )
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 전체 초기화 및 새 게임", use_container_width=True):
     if os.path.exists(SAVE_FILE):
         os.remove(SAVE_FILE)
+    if os.path.exists(LOG_FILE):
+        os.remove(LOG_FILE)
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -214,6 +268,7 @@ else:
                     "narrative": res.narrative,
                     "choices": res.choices,
                 })
+                append_ai_log(res.narrative)
                 save_game()
                 st.rerun()
 
@@ -260,7 +315,8 @@ else:
                         "choices": res.choices,
                     })
 
-                    # AI 메시지(assistant)가 최근 2개까지만 유지되도록 필터링
+                    append_ai_log(res.narrative)
+
                     assistant_indices = [
                         i for i, h in enumerate(st.session_state.history) 
                         if h["role"] == "assistant"
