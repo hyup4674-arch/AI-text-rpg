@@ -1,6 +1,7 @@
 import json
 import os
 import streamlit as st
+import streamlit.components.v1 as components # 음성 버튼(iframe)을 위해 추가됨
 from google import genai
 from google.genai import types
 from openai import OpenAI
@@ -166,11 +167,12 @@ else:
 font_size = st.sidebar.slider("🔤 글자 크기", 12, 26, 16, 1)
 
 # 🎨 스타일 정의 (채팅 및 선택지 버튼 글자 크기를 슬라이더에 연동하여 확실하게 확대)
+# CSS에 'div.stButton > button p' 를 추가하여 내부 텍스트까지 확실히 확대되게 수정했습니다.
 st.markdown(
     f"""
     <style>
         .stChatMessage p, .stChatMessage div {{ font-size: {font_size}px !important; line-height: 1.6 !important; }}
-        div.stButton > button {{
+        div.stButton > button, div.stButton > button p {{
             font-size: {font_size + 6}px !important;
             font-weight: bold !important;
             padding-top: 14px !important;
@@ -347,19 +349,22 @@ else:
         for idx, h in enumerate(st.session_state.history):
             with st.chat_message(h["role"]):
                 st.markdown(h.get("narrative", ""))
-                # 🔊 브라우저 가비지 컬렉션 방지 변수 할당을 통한 한국어 음성 출력 수정
+                
+                # 🔊 components.html을 이용해 스트림릿의 자바스크립트 차단 정책 우회 적용
                 if h["role"] == "assistant":
                     narrative_text = h.get("narrative", "")
                     safe_text = narrative_text.replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
-                    st.markdown(
-                        f"""
-                        <button onclick="window.speechSynthesis.cancel(); window._currentUtterance = new SpeechSynthesisUtterance('{safe_text}'); window._currentUtterance.lang='ko-KR'; window.speechSynthesis.speak(window._currentUtterance);" 
-                                style="background-color: #262730; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 8px; margin-bottom: 5px;">
+                    
+                    html_code = f"""
+                    <div style="margin-top: 5px; margin-bottom: 5px;">
+                        <button onclick="window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('{safe_text}'); u.lang='ko-KR'; window.speechSynthesis.speak(u);" 
+                                style="background-color: #262730; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; font-family: sans-serif; font-weight: bold;">
                             🔊 음성으로 듣기
                         </button>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                    </div>
+                    """
+                    # components.html로 렌더링하면 스크립트 삭제 없이 정상 작동합니다.
+                    components.html(html_code, height=50)
 
         current_choices = []
         if st.session_state.history:
