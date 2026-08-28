@@ -79,12 +79,21 @@ class SyncTextRPGResponse(BaseModel):
 
 
 # 💾 [세이브 및 로드 관리]
+default_sync_text = (
+    "종족: 미정\n"
+    "직업: 미정\n"
+    "레벨: 1 (경험치: 0/100)\n"
+    "체력(HP): 60/60\n"
+    "마나(MP): 30/30\n"
+    "골드: 50G\n"
+    "장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n"
+    "사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"
+    "인벤토리: [\"체력 포션 (소)\", \"체력 포션 (소)\"]\n"
+)
+
 def save_game():
     data = {
-        "status_sync_text": st.session_state.get(
-            "status_sync_text",
-            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP): 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n인벤토리: [\"체력 포션 (소)\", \"체력 포션 (소)\n사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"]",
-        ),
+        "status_sync_text": st.session_state.get("status_sync_text", default_sync_text),
         "history": st.session_state.get("history", []),
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
@@ -105,18 +114,6 @@ if os.path.exists(SAVE_FILE):
             saved_data = json.load(f)
     except Exception:
         pass
-
-default_sync_text = (
-    "종족: 미정\n"
-    "직업: 미정\n"
-    "레벨: 1 (경험치: 0/100)\n"
-    "체력(HP): 60/60\n"
-    "마나(MP): 30/30\n"
-    "골드: 50G\n"
-    "장착 장비: {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷"}\n"
-    "사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"
-    "인벤토리: ["체력 포션 (소)", "체력 포션 (소)"]\n"
-)
 
 if "status_sync_text" not in st.session_state:
     st.session_state.status_sync_text = (
@@ -308,7 +305,7 @@ else:
     if not st.session_state.history:
         with st.spinner("에델가르드 대륙의 세계를 여는 중..."):
             res = call_ai_sync_text(
-                " 크로스로드 도시 고아원 18살이 되어 떠나며 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
+                "크로스로드 도시 고아원 18살이 되어 떠나며 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
             )
             if res:
                 st.session_state.status_sync_text = res.status_sync_text
@@ -366,14 +363,9 @@ else:
 
                     append_ai_log(res.narrative)
 
-                    # AI 메시지(assistant)가 최근 1개만 유지되도록 필터링
-                    assistant_indices = [
-                        i for i, h in enumerate(st.session_state.history) 
-                        if h["role"] == "assistant"
-                    ]
-                    if len(assistant_indices) > 1:
-                        start_idx = assistant_indices[-1]
-                        st.session_state.history = st.session_state.history[start_idx:]
+                    # 대화 기록이 너무 길어질 경우 상한선 관리 (최근 30개 항목 유지)
+                    if len(st.session_state.history) > 30:
+                        st.session_state.history = st.session_state.history[-30:]
                         
                     save_game()
                     st.rerun()
