@@ -3,10 +3,10 @@ import os
 import streamlit as st
 from google import genai
 from google.genai import types
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 # 🔑 [API 키 및 파일 설정]
-DEFAULT_API_KEY = ""
 SAVE_FILE = "rpg_sync_text_save.json"
 LOG_FILE = "rpg_story_log.txt"  # 전체 AI 서사 기록용 TXT 파일
 
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 st.title("⚔️ 에델가르드: 상태 텍스트 실시간 동기화 RPG")
 st.markdown(
-    "AI가 매 턴마다 갱신하는 캐릭터 상태 정보 블록을 좌측 슬라이드바에 그대로 반영하는 판타지 RPG입니다."
+    "AI가 매 턴마다 갱신하는 캐릭터 상태 정보 블록을 좌측 슬라이드바에 그대로 반영하는 판타지 RPG입니다. Gemini와 Groq 모델을 자유롭게 전환하여 사용할 수 있습니다."
 )
 
 # 🎨 [스크롤 위치 복원 JS]
@@ -129,11 +129,40 @@ if "history" not in st.session_state:
     )
 
 
-# ⚙️ [사이드바 UI]
-st.sidebar.header("⚙️ 게임 설정 및 상태창")
-api_key_input = st.sidebar.text_input(
-    "Google Gemini API 키 입력", value=DEFAULT_API_KEY, type="password"
-)
+# ⚙️ [사이드바 UI 및 AI 제공자 선택]
+st.sidebar.header("⚙️ 게임 설정 및 AI 선택")
+
+ai_provider = st.sidebar.selectbox("🤖 AI 제공자 선택", ["Google Gemini", "Groq"])
+
+api_key_input = ""
+selected_model = ""
+
+if ai_provider == "Google Gemini":
+    api_key_input = st.sidebar.text_input("Google Gemini API 키 입력", type="password")
+    selected_model = st.sidebar.selectbox(
+        "Gemini 모델 선택",
+        options=[
+            "gemini-3.1-flash-lite",
+            "gemini-3.2-flash-lite",
+            "gemini-3.3-flash-lite",
+            "gemini-3.4-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash-lite",
+        ],
+        index=0,
+    )
+else:
+    api_key_input = st.sidebar.text_input("Groq API 키 입력", type="password")
+    selected_model = st.sidebar.selectbox(
+        "Groq 모델 선택",
+        options=[
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+        ],
+        index=0,
+    )
+
 font_size = st.sidebar.slider("🔤 글자 크기", 12, 26, 16, 1)
 
 st.markdown(
@@ -145,20 +174,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 기존 고정 텍스트 대신 selectbox로 변경
-selected_model = st.sidebar.selectbox(
-    "Gemini 모델 선택",
-    options=[
-        "gemini-3.1-flash-lite",
-        "gemini-3.2-flash-lite",
-        "gemini-3.3-flash-lite",
-        "gemini-3.4-flash-lite",
-        "gemini-3.5-flash-lite",
-        "gemini-3.6-flash-lite",
-    ],
-    index=0,
-)
-
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 현재 캐릭터 상태 동기화 정보")
 st.sidebar.text(st.session_state.status_sync_text)
@@ -167,7 +182,6 @@ st.sidebar.text(st.session_state.status_sync_text)
 st.sidebar.markdown("---")
 st.sidebar.subheader("💾 세이브 & 로드 관리")
 
-# 1. 현재 게임 상태 다운로드 (수동 저장)
 if os.path.exists(SAVE_FILE):
     with open(SAVE_FILE, "r", encoding="utf-8") as f:
         json_data_str = f.read()
@@ -179,7 +193,6 @@ if os.path.exists(SAVE_FILE):
         use_container_width=True,
     )
 
-# 2. 저장된 게임 파일 업로드 (불러오기)
 uploaded_file = st.sidebar.file_uploader(
     "📂 세이브 파일 불러오기 (업로드)", type=["json"]
 )
@@ -189,7 +202,7 @@ if uploaded_file is not None:
         if "status_sync_text" in loaded_data and "history" in loaded_data:
             st.session_state.status_sync_text = loaded_data["status_sync_text"]
             st.session_state.history = loaded_data["history"]
-            save_game()  # 서버 환경에도 동기화 저장
+            save_game()
             st.sidebar.success("🎉 게임을 성공적으로 불러왔습니다!")
             st.rerun()
         else:
@@ -197,7 +210,6 @@ if uploaded_file is not None:
     except Exception as e:
         st.sidebar.error(f"❌ 파일을 읽는 중 오류 발생: {e}")
 
-# 3. 전체 스토리 로그(TXT) 다운로드 버튼
 if os.path.exists(LOG_FILE):
     with open(LOG_FILE, "r", encoding="utf-8") as f:
         log_data_str = f.read()
@@ -220,10 +232,8 @@ if st.sidebar.button("🔄 전체 초기화 및 새 게임", use_container_width
     st.rerun()
 
 
-# 🤖 [AI 호출 함수]
-def call_gemini_sync_text(user_action):
-    client = genai.Client(api_key=api_key_input)
-
+# 🤖 [통합 AI 호출 함수 (Gemini / Groq 전환 지원)]
+def call_ai_sync_text(user_action):
     system_instruction = (
         "당신은 에델가르드 판타지 RPG의 게임 마스터(GM)입니다.\n"
         "플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
@@ -246,30 +256,53 @@ def call_gemini_sync_text(user_action):
         + f"\n\n플레이어의 행동 또는 선택: {user_action}"
     )
 
-    try:
-        response = client.models.generate_content(
-            model=selected_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=SyncTextRPGResponse,
+    if ai_provider == "Google Gemini":
+        try:
+            client = genai.Client(api_key=api_key_input)
+            response = client.models.generate_content(
+                model=selected_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json",
+                    response_schema=SyncTextRPGResponse,
+                    temperature=0.7,
+                ),
+            )
+            return SyncTextRPGResponse.model_validate_json(response.text)
+        except Exception as e:
+            st.error(f"Gemini API 호출 오류: {e}")
+            return None
+    else:
+        try:
+            client = OpenAI(
+                api_key=api_key_input,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            groq_system_instruction = system_instruction + "\n반드시 아래의 JSON 구조로만 응답하세요:\n{\n  \"narrative\": \"서사 내용...\",\n  \"status_sync_text\": \"상태 동기화 텍스트...\",\n  \"choices\": [\"선택지1\", \"선택지2\", \"선택지3\"]\n}"
+            
+            response = client.chat.completions.create(
+                model=selected_model,
+                messages=[
+                    {"role": "system", "content": groq_system_instruction},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"},
                 temperature=0.7,
-            ),
-        )
-        return SyncTextRPGResponse.model_validate_json(response.text)
-    except Exception as e:
-        st.error(f"Gemini API 호출 오류: {e}")
-        return None
+            )
+            return SyncTextRPGResponse.model_validate_json(response.choices[0].message.content)
+        except Exception as e:
+            st.error(f"Groq API 통신 에러 발생: {e}")
+            return None
 
 
 # 🎮 [메인 화면 로직]
 if not api_key_input:
-    st.warning("⚠️ 좌측 사이드바에 Google Gemini API 키를 입력해 주세요.")
+    st.warning(f"⚠️ 좌측 사이드바에 {ai_provider} API 키를 입력해 주세요.")
 else:
     if not st.session_state.history:
         with st.spinner("에델가르드 대륙의 세계를 여는 중..."):
-            res = call_gemini_sync_text(
+            res = call_ai_sync_text(
                 "엘프 종족 마법사 직업으로 크로스로드 도시 여관에서 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
             )
             if res:
@@ -315,7 +348,7 @@ else:
                 st.markdown(final_input)
 
             with st.spinner("게임 마스터가 처리 중..."):
-                res = call_gemini_sync_text(final_input)
+                res = call_ai_sync_text(final_input)
 
                 if res:
                     st.session_state.status_sync_text = res.status_sync_text
