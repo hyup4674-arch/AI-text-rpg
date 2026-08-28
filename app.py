@@ -11,9 +11,9 @@ SAVE_FILE = "rpg_sync_text_save.json"
 LOG_FILE = "rpg_story_log.txt"  # 전체 AI 서사 기록용 TXT 파일
 
 st.set_page_config(
-    page_title="에델가르드 패권전 - 동기화 텍스트 RPG", page_icon="⚔️", layout="wide"
+    page_title="텍스트 RPG", page_icon="⚔️", layout="wide"
 )
-st.title("⚔️ 에델가르드: 상태 텍스트 실시간 동기화 RPG")
+st.title("⚔️ 텍스트 실시간 RPG")
 st.markdown(
     "AI가 매 턴마다 갱신하는 캐릭터 상태 정보 블록을 좌측 슬라이드바에 그대로 반영하는 판타지 RPG입니다. Gemini와 Groq 모델을 자유롭게 전환하여 사용할 수 있습니다."
 )
@@ -56,7 +56,7 @@ st.markdown(
 # 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="플레이어의 행동에 따른 상세하고 몰입감 있는 스토리 서사 묘사."
+        description="인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존한다  "
     )
     status_sync_text: str = Field(
         description=(
@@ -69,7 +69,8 @@ class SyncTextRPGResponse(BaseModel):
             "골드: 20G\n"
             "장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n"
             "인벤토리: [\"체력 포션 (소)\", \"마력 회복의 반지\"]\n"
-            "변동 사항이 생길 때마다 수치, 골드, 인벤토리를 정확하게 갱신하여 작성하세요."
+            "사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"
+            "변동 사항이 생길 때마다 수치, 골드, 장착장비,인벤토리,사용가능한 마법 및 기술을 정확하게 갱신하여 작성하세요."
         )
     )
     choices: list[str] = Field(
@@ -82,7 +83,7 @@ def save_game():
     data = {
         "status_sync_text": st.session_state.get(
             "status_sync_text",
-            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP): 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n인벤토리: [\"체력 포션 (소)\", \"체력 포션 (소)\"]",
+            "종족: 미정\n직업: 미정\n레벨: 1 (경험치: 0/100)\n체력(HP): 60/60\n마나(MP): 30/30\n골드: 50G\n장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n인벤토리: [\"체력 포션 (소)\", \"체력 포션 (소)\n사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"]",
         ),
         "history": st.session_state.get("history", []),
     }
@@ -112,8 +113,9 @@ default_sync_text = (
     "체력(HP): 60/60\n"
     "마나(MP): 30/30\n"
     "골드: 50G\n"
-    '장착 장비: {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷"}\n'
-    '인벤토리: ["체력 포션 (소)", "체력 포션 (소)"]'
+    "장착 장비: {"무기": "초보자의 무기", "갑옷": "여행자 가죽옷"}\n"
+    "사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"
+    "인벤토리: ["체력 포션 (소)", "체력 포션 (소)"]\n"
 )
 
 if "status_sync_text" not in st.session_state:
@@ -143,9 +145,6 @@ if ai_provider == "Google Gemini":
         "Gemini 모델 선택",
         options=[
             "gemini-3.1-flash-lite",
-            "gemini-3.2-flash-lite",
-            "gemini-3.3-flash-lite",
-            "gemini-3.4-flash-lite",
             "gemini-3.5-flash-lite",
             "gemini-3.6-flash-lite",
         ],
@@ -240,8 +239,8 @@ if st.sidebar.button("🔄 전체 초기화 및 새 게임", use_container_width
 # 🤖 [통합 AI 호출 함수 (Gemini / Groq 전환 지원)]
 def call_ai_sync_text(user_action):
     system_instruction = (
-        "당신은 에델가르드 판타지 RPG의 게임 마스터(GM)입니다.\n"
-        "플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
+        "당신은 판타지 RPG의 게임 마스터(GM)입니다.\n"
+        "인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
         "status_sync_text 형식 예시:\n"
         "종족: 엘프\n"
         "직업: 마법사\n"
@@ -251,7 +250,8 @@ def call_ai_sync_text(user_action):
         "골드: 20G\n"
         "장착 장비: {\"무기\": \"초보자의 무기\", \"갑옷\": \"여행자 가죽옷\"}\n"
         "인벤토리: [\"체력 포션 (소)\", \"마력 회복의 반지\"]\n\n"
-        "아이템 구매, 골드 변동, 체력/마나 소모, 아이템 획득 등이 발생할 때마다 status_sync_text 내부의 수치와 리스트를 정확하게 반영해 주세요."
+        "사용가능한 마법 및 기술: [\"마력탄\", \"방패술\"]\n"
+        "아이템 구매, 골드 변동, 체력/마나 소모, 아이템 획득, 마법 이나 기술 습득이 발생할 때마다 status_sync_text 내부의 수치와 리스트를 정확하게 반영해 주세요."
     )
 
     prompt = (
@@ -308,7 +308,7 @@ else:
     if not st.session_state.history:
         with st.spinner("에델가르드 대륙의 세계를 여는 중..."):
             res = call_ai_sync_text(
-                "엘프 종족 마법사 직업으로 크로스로드 도시 여관에서 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
+                " 크로스로드 도시 고아원 18살이 되어 떠나며 모험을 시작하려고 한다. 첫 오프닝을 열어줘."
             )
             if res:
                 st.session_state.status_sync_text = res.status_sync_text
