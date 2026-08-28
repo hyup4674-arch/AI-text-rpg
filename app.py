@@ -57,7 +57,7 @@ st.markdown(
 # 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="초등학교 1학년 아이도 쉽게 이해할 수 있는 아주 쉬운 단어와 짧은 문장으로 쓴 재미있는 모험 이야기 서사 묘사."
+        description="인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요."
     )
     status_sync_text: str = Field(
         description=(
@@ -129,9 +129,9 @@ if "history" not in st.session_state:
 
 if "game_concept" not in st.session_state:
     st.session_state.game_concept = (
-        saved_data.get("game_concept", "아기자기하고 신나는 초보 모험가의 정통 판타지 모험 이야기")
+        saved_data.get("game_concept", "인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요")
         if saved_data
-        else "아기자기하고 신나는 초보 모험가의 정통 판타지 모험 이야기"
+        else "인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요"
     )
 
 
@@ -284,7 +284,6 @@ def call_ai_sync_text(user_action):
     system_instruction = (
         "당신은 판타지 RPG의 친절하고 다정한 게임 마스터(GM)입니다."
         f"{concept_instruction}\n\n"
-        "이야기를 들려줄 때는 **초등학교 1학년 어린이가 읽고 아주 쉽게 이해할 수 있는 쉬운 단어와 짧은 문장**만 사용하세요. 어려운 한자어나 복잡한 설명 대신, 누구나 알 수 있는 쉬운 말로 따뜻하고 재미있는 모험 이야기를 만들어 주세요.\n\n"
         "플레이어의 행동에 따라 이야기를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요.\n\n"
         "status_sync_text 형식 예시:\n"
         "종족: 엘프\n"
