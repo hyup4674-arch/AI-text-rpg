@@ -278,7 +278,7 @@ else:
                     })
 
                     # 최근 6개 기록만 유지
-                    if len(st.session_state.history) > 6:
+                    if len(st.session_state.history) > 2:
                         st.session_state.history = st.session_state.history[
                             -6:
                         ]
