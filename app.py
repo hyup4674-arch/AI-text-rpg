@@ -153,15 +153,20 @@ if ai_provider == "Google Gemini":
     )
 else:
     api_key_input = st.sidebar.text_input("Groq API 키 입력", type="password")
-    selected_model = st.sidebar.selectbox(
+    groq_model_option = st.sidebar.selectbox(
         "Groq 모델 선택",
         options=[
+            "llama-3.1-8b-instant",  # 기본 안정 모델
+            "openai/gpt-oss-20b",
             "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
+            "직접 입력",
         ],
         index=0,
     )
+    if groq_model_option == "직접 입력":
+        selected_model = st.sidebar.text_input("사용할 Groq 모델명 입력", value="llama-3.1-8b-instant")
+    else:
+        selected_model = groq_model_option
 
 font_size = st.sidebar.slider("🔤 글자 크기", 12, 26, 16, 1)
 
