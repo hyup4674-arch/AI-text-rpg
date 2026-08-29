@@ -2,366 +2,474 @@ import json
 import os
 import random
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 from google.genai import types
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-st.set_page_config(page_title="판타지 추리 RPG: 모험의 시작", page_icon="🗺️", layout="wide")
+# 🔑 [API 키 및 파일 설정]
+SAVE_FILE = "rpg_sync_text_save.json"
+LOG_FILE = "rpg_story_log.txt"
 
-# 📋 [AI 동적 퀘스트 생성 스키마]
-class DynamicDeductionQuest(BaseModel):
-    title: str = Field(description="추리 퀘스트의 흥미로운 제목")
-    description: str = Field(description="마법서 도난, 길드장 암살, 밀수 등 플레이어가 추리해야 할 사건 개요")
-    npc_1_name: str = Field(description="첫 번째 NPC 이름 (예: 상인 밥)")
-    npc_1_dialogue: str = Field(description="첫 번째 NPC의 초기 진술 (정직하거나 거짓)")
-    npc_1_is_liar: bool = Field(description="첫 번째 NPC의 거짓말쟁이 여부 (True/False)")
-    npc_1_clue: str = Field(description="이 NPC를 통해 얻는 단서 또는 모순점")
-    
-    npc_2_name: str = Field(description="두 번째 NPC 이름 (예: 경비병 톰)")
-    npc_2_dialogue: str = Field(description="두 번째 NPC의 초기 진술")
-    npc_2_is_liar: bool = Field(description="두 번째 NPC의 거짓말쟁이 여부")
-    npc_2_clue: str = Field(description="이 NPC를 통해 얻는 단서 또는 모순점")
-    
-    correct_culprit: str = Field(description="진범의 이름 (npc_1_name 또는 npc_2_name 중 하나)")
-    reward_stat_name: str = Field(description="상승시킬 능력치 종류 (예: '힘', '민첩', '지능', '체력스탯')")
-    reward_stat_boost: int = Field(description="능력치 상승량 (밸런스 유지를 위해 5 또는 10으로 설정)")
-    reward_gear: str = Field(description="점진적으로 좋아진 무기 또는 방어구 이름")
-    reward_skill: str = Field(description="보상으로 획득하는 신규 마법 또는 기술")
+st.set_page_config(
+    page_title="추리 퀘스트 주사위 판정 텍스트 RPG", page_icon="🗺️", layout="wide"
+)
+st.title("🗺️ 판타지 추리 & 주사위 모험 RPG")
+st.markdown(
+    "상점에서는 오직 초보용 기초 장비와 포션만 구매할 수 있습니다. 진정한 고급 장비, 마법, 스탯 상승은 마을 주민들과의 심도 있는 **대화와 복잡한 추리 퀘스트**를 통해서만 획득할 수 있습니다!"
+)
+
+# 🎨 [스크롤 위치 복원 JS]
+st.markdown(
+    """
+    <script>
+        (function() {
+            const pWin = window.parent || window;
+            const pDoc = pWin.document;
+            const SCROLL_KEY = 'rpg_sync_text_scroll';
+            function getScrollContainer() {
+                return pDoc.querySelector('[data-testid="stAppViewContainer"]') || pDoc.querySelector('.main') || pWin;
+            }
+            const container = getScrollContainer();
+            const savePos = function() {
+                const pos = (container !== pWin) ? container.scrollTop : (pWin.pageYOffset || pDoc.documentElement.scrollTop);
+                pWin.sessionStorage.setItem(SCROLL_KEY, pos);
+            };
+            if (container !== pWin) { container.addEventListener('scroll', savePos, { passive: true }); }
+            else { pWin.addEventListener('scroll', savePos, { passive: true }); }
+            function restoreScroll() {
+                const saved = pWin.sessionStorage.setItem(SCROLL_KEY);
+                if (saved !== null) {
+                    const targetPos = parseInt(saved, 10);
+                    const cont = getScrollContainer();
+                    if (cont !== pWin) { cont.scrollTop = targetPos; } else { pWin.scrollTo(0, targetPos); }
+                }
+            }
+            setTimeout(restoreScroll, 50);
+            setTimeout(restoreScroll, 200);
+        })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-# 💾 [세션 초기화]
-if "location" not in st.session_state:
-    st.session_state.location = "orphanage"
+# 📋 [AI 응답 스키마]
+class SyncTextRPGResponse(BaseModel):
+    narrative: str = Field(
+        description="주사위 눈의 결과와 플레이어의 선택을 반영한 서사. 전투 발생 시 적의 HP가 0이 될 때까지의 라운드별 계산 과정을 압축하여 보여주세요. 마을 방문이나 주민 대화 시에는 추리 단서와 심리적 요소를 상세히 묘사하세요."
+    )
+    status_sync_text: str = Field(
+        description=(
+            "현재 캐릭터의 상태 텍스트 블록. 반드시 항목별로 줄바꿈 포함:\n"
+            "종족: 인간\n"
+            "직업: 전사\n"
+            "레벨: 1 (경험치: 0/100)\n"
+            "체력(HP): 100/100\n"
+            "마나(MP): 20/20\n"
+            "힘: 10\n"
+            "체력스탯: 10\n"
+            "지능: 10\n"
+            "민첩: 10\n"
+            "골드: 50G\n"
+            "장착 장비: 무기: 낡은 단검, 갑옷: 누더기 옷\n"
+            "인벤토리: 체력 포션 (소)\n"
+            "사용가능한 마법 및 기술: 기본 공격, 도망치기\n"
+        )
+    )
+    choices: list[str] = Field(
+        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지. (예: 상점 가기, 특정 주민과 대화하기, 추리 결판 내기, 사냥터 가기 등)"
+    )
+    quest_update: str = Field(
+        description="현재 진행 중인 추리 퀘스트의 핵심 요약, 수집된 단서, 의심되는 인물 및 다음 수사 방향을 정리한 텍스트. 우측 사이드바에 고정 노출됩니다."
+    )
 
-if "level" not in st.session_state:
-    st.session_state.level = 1
-    st.session_state.exp = 0
-    st.session_state.max_exp = 100
-    st.session_state.hp = 100
-    st.session_state.max_hp = 100
-    st.session_state.mp = 30
-    st.session_state.stats = {"힘": 10, "체력스탯": 10, "지능": 10, "민첩": 10}
-    st.session_state.gold = 50
-    st.session_state.gear = "낡은 단검 / 누더기 옷"
-    st.session_state.skills = ["기본 공격", "탐색"]
-    st.session_state.active_quest = None
-    st.session_state.quest_history = []
+
+# 💾 [기본 데이터 및 세이브/로드 관리]
+default_sync_text = (
+    "종족: 인간\n"
+    "직업: 미정\n"
+    "레벨: 1 (경험치: 0/100)\n"
+    "체력(HP): 100/100\n"
+    "마나(MP): 20/20\n"
+    "힘: 10\n"
+    "체력스탯: 10\n"
+    "지능: 10\n"
+    "민첩: 10\n"
+    "골드: 50G\n"
+    "장착 장비: 무기: 낡은 단검, 갑옷: 누더기 옷\n"
+    "인벤토리: 체력 포션 (소)\n"
+    "사용가능한 마법 및 기술: 기본 공격, 도망치기\n"
+)
+
+default_quest_text = (
+    "📌 [현재 추리 퀘스트]\n"
+    "- 상태: 퀘스트 미수주\n"
+    "- 목표: 마을 광장을 방문하여 주민들과 대화하고 미스터리 사건을 파악하세요.\n"
+    "- 수집된 단서: 없음\n"
+)
+
+def save_game():
+    data = {
+        "status_sync_text": st.session_state.get("status_sync_text", default_sync_text),
+        "history": st.session_state.get("history", []),
+        "game_concept": st.session_state.get("game_concept", ""),
+        "active_quest_info": st.session_state.get("active_quest_info", default_quest_text),
+    }
+    with open(SAVE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
 
 
-# ⚙️ [사이드바 설정 (AI 제공자 및 실제 사용 가능한 Gemini 3.1 라이트 이상 모델 선택)]
-st.sidebar.header("🤖 AI 및 API 설정")
-ai_provider = st.sidebar.selectbox("AI 제공자", ["Google Gemini", "Groq"])
-api_key = st.sidebar.text_input(f"{ai_provider} API 키", type="password")
+def append_ai_log(narrative):
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{narrative}\n\n" + "-" * 50 + "\n\n")
+
+
+# 📊 [세션 초기화]
+saved_data = None
+if os.path.exists(SAVE_FILE):
+    try:
+        with open(SAVE_FILE, "r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+    except Exception:
+        pass
+
+if "status_sync_text" not in st.session_state:
+    st.session_state.status_sync_text = (
+        saved_data.get("status_sync_text", default_sync_text)
+        if saved_data
+        else default_sync_text
+    )
+
+if "active_quest_info" not in st.session_state:
+    st.session_state.active_quest_info = (
+        saved_data.get("active_quest_info", default_quest_text)
+        if saved_data
+        else default_quest_text
+    )
+
+if "history" not in st.session_state:
+    st.session_state.history = (
+        saved_data.get("history", []) if saved_data else []
+    )
+
+if "game_concept" not in st.session_state:
+    st.session_state.game_concept = (
+        saved_data.get("game_concept", "판타지 모험. 상점에서는 초보용 장비/포션만 판매. 강력한 장비와 마법, 스탯 상승은 마을 주민들과의 깊이 있는 대화와 복잡한 두뇌 추리 퀘스트를 해결해야만 획득 가능함.")
+        if saved_data
+        else "판타지 모험. 상점에서는 초보용 장비/포션만 판매. 강력한 장비와 마법, 스탯 상승은 마을 주민들과의 깊이 있는 대화와 복잡한 두뇌 추리 퀘스트를 해결해야만 획득 가능함."
+    )
+
+
+# ⚙️ [사이드바 UI]
+st.sidebar.header("⚙️ 게임 설정 및 AI 선택")
+
+ai_provider = st.sidebar.selectbox("🤖 AI 제공자 선택", ["Google Gemini", "Groq"])
+
+api_key_input = ""
+selected_model = ""
 
 if ai_provider == "Google Gemini":
+    api_key_input = st.sidebar.text_input("Google Gemini API 키 입력", type="password")
     selected_model = st.sidebar.selectbox(
-        "Gemini 모델 선택 (3.1 라이트 이상 실제 API 모델)",
-        [
-            "gemini-3.1-flash-lite", 
-            "gemini-3.5-flash-lite", 
-            "gemini-3.6-flash", 
-            "gemini-3.5-flash"
-        ]
+        "Gemini 모델 선택",
+        options=[
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.6-flash-lite",
+        ],
+        index=0,
     )
 else:
-    selected_model = st.sidebar.text_input("Groq 모델명 입력", value="llama-3.1-8b-instant")
+    api_key_input = st.sidebar.text_input("Groq API 키 입력", type="password")
+    groq_model_option = st.sidebar.selectbox(
+        "Groq 모델 선택",
+        options=[
+            "openai/gpt-oss-20b",
+            "직접 입력",
+        ],
+        index=0,
+    )
+    if groq_model_option == "직접 입력":
+        selected_model = st.sidebar.text_input("사용할 Groq 모델명 입력", value="llama-3.1-8b-instant")
+    else:
+        selected_model = groq_model_option
+
+font_size = st.sidebar.slider("🔤 글자 크기", 12, 26, 16, 1)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🛡️ 내 정보 요약")
-st.sidebar.text(f"레벨: Lv.{st.session_state.level} (EXP: {st.session_state.exp}/{st.session_state.max_exp})")
-st.sidebar.text(f"소지 골드: 🪙 {st.session_state.gold}G")
-st.sidebar.text(f"장비: {st.session_state.gear}")
+st.sidebar.subheader("📜 퀘스트 및 추리 수사 노트")
+clean_quest_info = st.session_state.active_quest_info.replace('"', '').replace('{', '').replace('}', '')
+st.sidebar.markdown(f"""
+<div style="background-color: #1e1e1e; padding: 12px; border-radius: 8px; border: 1px solid #444; font-size: 14px; line-height: 1.5;">
+{clean_quest_info.replace(chr(10), '<br>')}
+</div>
+""", unsafe_allow_html=True)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🛡️ 캐릭터 상태 동기화")
 
-# 🤖 [AI 퀘스트 생성 함수]
-def generate_ai_quest(player_level, stats):
-    system_instruction = (
-        "당신은 판타지 추리 RPG의 게임 마스터입니다.\n"
-        "플레이어의 레벨과 능력치에 맞춰 마을에서 발생한 미스터리 사건을 1개 생성하세요.\n"
-        "보상 능력치 상승량(reward_stat_boost)은 5 또는 10으로 제한하여 밸런스를 유지하세요."
+clean_status = (
+    st.session_state.status_sync_text
+    .replace('"', '')
+    .replace('{', '')
+    .replace('}', '')
+    .replace('[', '')
+    .replace(']', '')
+)
+
+keys_to_break = [
+    "종족:", "직업:", "레벨:", "체력(HP):", "마나(MP):", 
+    "힘:", "체력스탯:", "지능:", "민첩:", "골드:", 
+    "장착 장비:", "인벤토리:", "사용가능한 마법 및 기술:"
+]
+for key in keys_to_break:
+    clean_status = clean_status.replace(key, f"\n{key}")
+
+st.sidebar.text(clean_status)
+
+# 💾 [세이브/로드 다운로드 섹션]
+st.sidebar.markdown("---")
+st.sidebar.subheader("💾 세이브 & 로드 관리")
+
+if os.path.exists(SAVE_FILE):
+    with open(SAVE_FILE, "r", encoding="utf-8") as f:
+        json_data_str = f.read()
+    st.sidebar.download_button(
+        label="📥 세이브 파일 저장",
+        data=json_data_str,
+        file_name="rpg_sync_text_save.json",
+        mime="application/json",
+        use_container_width=True,
     )
-    prompt = f"현재 플레이어 레벨: {player_level}, 능력치: {stats}. 새로운 추리 사건을 생성해주세요."
+
+uploaded_file = st.sidebar.file_uploader(
+    "📂 세이브 파일 불러오기", type=["json"]
+)
+if uploaded_file is not None:
+    try:
+        loaded_data = json.load(uploaded_file)
+        if "status_sync_text" in loaded_data and "history" in loaded_data:
+            st.session_state.status_sync_text = loaded_data["status_sync_text"]
+            st.session_state.history = loaded_data["history"]
+            st.session_state.game_concept = loaded_data.get("game_concept", st.session_state.game_concept)
+            st.session_state.active_quest_info = loaded_data.get("active_quest_info", default_quest_text)
+            save_game()
+            st.sidebar.success("🎉 불러오기 성공!")
+            st.rerun()
+        else:
+            st.sidebar.error("❌ 올바르지 않은 세이브 형식입니다.")
+    except Exception as e:
+        st.sidebar.error(f"❌ 오류 발생: {e}")
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🔄 전체 초기화 및 새 게임", use_container_width=True):
+    if os.path.exists(SAVE_FILE):
+        os.remove(SAVE_FILE)
+    if os.path.exists(LOG_FILE):
+        os.remove(LOG_FILE)
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
+
+# 🎨 [글자 크기 CSS]
+st.markdown(
+    f"""
+    <style>
+        .stChatMessage p, .stChatMessage div {{ font-size: {font_size}px !important; line-height: 1.6 !important; }}
+        div.stButton > button, div.stButton > button p {{
+            font-size: {font_size + 4}px !important;
+            font-weight: bold !important;
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# 🤖 [AI 호출 함수]
+def call_ai_sync_text(user_action, dice_val):
+    concept_str = st.session_state.game_concept.strip()
+    system_instruction = (
+        "당신은 판타지 추리 RPG의 게임 마스터(GM)입니다.\n"
+        f"[게임 컨셉]\n{concept_str}\n\n"
+        "【규칙】\n"
+        "1. 사망이나 영구적 파멸은 절대 없습니다. 어떤 선택을 하거나 실패하더라도 게임이 끝나지 않으며, 피해를 입어도 체력이 최소 1 이상 남거나 회복 수단이 제공됩니다.\n"
+        "2. 상점 이용 규칙 (매우 중요): 마을 상점에서는 오직 '초보용 장비(녹슨 무기, 낡은 방패 등)'와 '포션(체력/마나 포션)'만 구매할 수 있습니다. 상점에서 전설적인 무기나 고위 마법을 절대 팔지 않도록 하세요.\n"
+        "3. 추리 퀘스트 규칙 (매우 중요): 강력한 장비, 희귀 마법, 대폭의 스탯 상승은 반드시 마을 주민들과 대화하고 모순점을 찾아내는 **복잡한 두뇌 추리 퀘스트**를 해결해야만 얻을 수 있습니다. 단번에 해결되지 않도록 여러 명의 NPC가 서로 다른 거짓말이나 알리바이를 대도록 설계하고, 플레이어가 머리를 써서 추리하게 만드세요.\n"
+        "4. 우측 사이드바 연동 (`quest_update`): 현재 진행 중인 추리 퀘스트의 진행 상황, 수집된 결정적 단서, 의심되는 인물 및 다음 수사 방향을 상세히 요약하여 `quest_update` 필드에 반드시 반영하세요.\n"
+        "5. 전투 상황 규칙: 적을 만나서 공격이나 전투 관련 선택지를 고르면, 매 라운드 쪼개지 말고 한 번의 응답 안에서 **적의 HP가 0이 될 때까지의 라운드별 계산 과정을 간결하게 압축하여 보여주고 전투를 확실히 끝마치세요.**\n"
+        "6. 주사위 판정(1~6) 결과를 서사와 퀘스트 성공 여부에 적극적으로 반영하세요.\n"
+        "7. 캐릭터 상태 동기화 텍스트(status_sync_text)의 모든 항목을 최신 상태로 갱신하세요."
+    )
+
+    prompt = (
+        f"[현재 캐릭터 상태 동기화 정보]\n{st.session_state.status_sync_text}\n\n"
+        f"[현재 퀘스트 수사 노트]\n{st.session_state.active_quest_info}\n\n"
+        f"최근 대화 기록:\n"
+        + json.dumps(st.session_state.history[-6:], ensure_ascii=False)
+        + f"\n\n플레이어의 행동 또는 선택: {user_action}\n"
+        + f"🎲 [이번 턴 굴린 주사위 결과]: {dice_val} (1~6 중 랜덤)"
+    )
 
     if ai_provider == "Google Gemini":
         try:
-            client = genai.Client(api_key=api_key)
-            res = client.models.generate_content(
+            client = genai.Client(api_key=api_key_input)
+            response = client.models.generate_content(
                 model=selected_model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
-                    response_schema=DynamicDeductionQuest,
+                    response_schema=SyncTextRPGResponse,
                     temperature=0.7,
                 ),
             )
-            return json.loads(res.text)
+            return SyncTextRPGResponse.model_validate_json(response.text)
         except Exception as e:
-            st.error(f"Gemini API 오류: {e}")
+            st.error(f"Gemini API 호출 오류: {e}")
             return None
     else:
         try:
-            client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-            res = client.chat.completions.create(
+            client = OpenAI(
+                api_key=api_key_input,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            groq_system_instruction = system_instruction + "\n반드시 아래 JSON 구조로만 응답하세요:\n{\n  \"narrative\": \"서사 내용...\",\n  \"status_sync_text\": \"상태 텍스트...\",\n  \"choices\": [\"선택지1\", \"선택지2\", \"선택지3\"],\n  \"quest_update\": \"퀘스트 및 단서 요약...\"\n}"
+            
+            response = client.chat.completions.create(
                 model=selected_model,
                 messages=[
-                    {"role": "system", "content": system_instruction + "\n반드시 JSON 형식으로만 응답하세요."},
+                    {"role": "system", "content": groq_system_instruction},
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"},
+                max_tokens=8192,
                 temperature=0.7,
             )
-            return json.loads(res.choices[0].message.content)
+            return SyncTextRPGResponse.model_validate_json(response.choices[0].message.content)
         except Exception as e:
-            st.error(f"Groq API 오류: {e}")
+            st.error(f"Groq API 통신 에러: {e}")
             return None
 
 
-# ==========================================
-# 🗺️ 1. 고아원 오프닝 씬 (시작점)
-# ==========================================
-if st.session_state.location == "orphanage":
-    st.title("🏡 가난한 고아원의 문 앞")
-    st.markdown("---")
-    st.write("당신은 오늘로 **18살**이 되었습니다. 오직 낡은 단검 하나와 누더기 옷을 걸친 채, 원장 수녀님의 따뜻한 배웅을 뒤로하고 드넓은 판타지 세계로 첫걸음을 내딛습니다.")
-    st.write("세상은 냉혹합니다. 거친 야수가 도사리는 **사냥터**로 갈 수도 있고, 생필품을 파는 **마을**로 향할 수도 있습니다.")
-    
-    if st.button("🎒 배낭을 메고 판타지 마을 '루멘'으로 향한다!", use_container_width=True):
-        st.session_state.location = "town"
-        st.rerun()
-
-
-# ==========================================
-# 🏘️ 2. 판타지 마을 '루멘' (허브)
-# ==========================================
-elif st.session_state.location == "town":
-    st.title("🏘️ 판타지 마을: 루멘 (Lumen)")
-    st.markdown("모험가들이 거쳐 가는 평화롭고도 비밀이 많은 마을입니다. 이곳에서 장비를 정비하거나, 주민들과 대화하여 사건을 파악할 수 있습니다.")
-    st.markdown("---")
-    
-    col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-    with col_t1:
-        if st.button("🪙 상점 방문하기", use_container_width=True):
-            st.session_state.location = "shop"
-            st.rerun()
-    with col_t2:
-        if st.button("🗣️ 마을 주민들과 대화 및 수사", use_container_width=True):
-            st.session_state.location = "quest_board"
-            st.rerun()
-    with col_t3:
-        if st.button("🌲 사냥터로 나가기", use_container_width=True):
-            st.session_state.location = "hunting"
-            st.rerun()
-    with col_t4:
-        if st.button("📜 내 상태 및 인벤토리", use_container_width=True):
-            st.session_state.location = "status"
-            st.rerun()
-
-    st.markdown("---")
-    st.info("💡 **마을 사람의 조언:** \"여기 상점에서는 낡은 포션이나 초보용 방패 같은 기본적인 것밖에 안 팔아. 정말 강해지고 싶다면 마을 광장에서 사람들과 대화하며 **사건(추리 퀘스트)**을 해결해 보게나! 진정한 힘은 거기서 얻을 수 있네.\"")
-
-
-# ==========================================
-# 🪙 3. 초보자 상점
-# ==========================================
-elif st.session_state.location == "shop":
-    st.title("🪙 루멘 마을 초보자 상점")
-    st.markdown("상점 주인: *\"어서 와라, 모험가 양반. 여기는 초보자용 기초 장비랑 포션만 판다네. 더 좋은 걸 찾으려면 마을에서 사건을 해결해봐!\"*")
-    st.markdown("---")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        st.write("**체력 포션 (소)** - 가격: 10G (효과: 체력 회복)")
-        if st.button("포션 구매"):
-            if st.session_state.gold >= 10:
-                st.session_state.gold -= 10
-                st.success("체력 포션 구매 완료!")
-            else:
-                st.error("골드가 부족합니다!")
-    with c2:
-        st.write("**초보자용 가죽 모자** - 가격: 30G (효과: 기본 방어)")
-        if st.button("모자 구매"):
-            if st.session_state.gold >= 30:
-                st.session_state.gold -= 30
-                st.success("모자 구매 완료!")
-            else:
-                st.error("골드가 부족합니다!")
-                
-    st.markdown("---")
-    if st.button("🏠 마을 광장으로 돌아가기"):
-        st.session_state.location = "town"
-        st.rerun()
-
-
-# ==========================================
-# 📜 4. 내 상태 및 정보 확인
-# ==========================================
-elif st.session_state.location == "status":
-    st.title("📜 모험가 정보 노트")
-    st.markdown("---")
-    c_s1, c_s2 = st.columns(2)
-    with c_s1:
-        st.metric("레벨", f"Lv. {st.session_state.level}", f"EXP: {st.session_state.exp}/{st.session_state.max_exp}")
-        st.metric("체력(HP)", f"{st.session_state.hp} / {st.session_state.max_hp}")
-        st.metric("소지 골드", f"🪙 {st.session_state.gold}G")
-        st.write(f"**현재 장착 장비:** {st.session_state.gear}")
-    with c_s2:
-        st.write("**능력치 스탯**")
-        for k, v in st.session_state.stats.items():
-            st.text(f"- {k}: {v}")
-        st.markdown(f"**보유 기술 및 마법:** {', '.join(st.session_state.skills)}")
-
-    st.markdown("---")
-    if st.button("🏠 마을 광장으로 돌아가기"):
-        st.session_state.location = "town"
-        st.rerun()
-
-
-# ==========================================
-# 🗣️ 5. 마을 광장 & 추리 퀘스트 수주/진행
-# ==========================================
-elif st.session_state.location == "quest_board":
-    st.title("🗣️ 마을 광장: 주민 대화 및 의뢰 게시판")
-    st.markdown("주민들과 대화를 나누어 마을에 숨겨진 미스터리 사건을 파헤치고, 상점에서는 절대 구할 수 없는 강력한 장비와 마법을 획득하세요!")
-    st.markdown("---")
-
-    if not api_key:
-        st.warning("⚠️ 사이드바에 AI API 키를 먼저 입력해주세요.")
-        if st.button("🏠 마을 광장으로"):
-            st.session_state.location = "town"
-            st.rerun()
-    else:
-        if st.session_state.active_quest is None:
-            if st.button("✨ 새로운 사건 의뢰받기 (마을 주민들과 대화 시작)", use_container_width=True):
-                with st.spinner("AI가 새로운 미스터리 사건을 설계하는 중..."):
-                    q_data = generate_ai_quest(st.session_state.level, st.session_state.stats)
-                    if q_data:
-                        q_data["collected_clues"] = []
-                        q_data["status"] = "진행중"
-                        q_data["npc_1_fav"] = 10
-                        q_data["npc_2_fav"] = 10
-                        st.session_state.active_quest = q_data
-                        st.rerun()
+# 🎮 [메인 화면 로직]
+if not api_key_input:
+    st.warning(f"⚠️ 좌측 사이드바에 {ai_provider} API 키를 입력해 주세요.")
+else:
+    # 1. 직업 선택 화면 (처음 시작할 때)
+    if not st.session_state.history:
+        st.subheader("🛡️ 캐릭터 직업 선택")
+        selected_job = st.selectbox("원하는 직업을 선택하세요", ["전사", "마법사", "도적", "성기사", "사냥꾼"])
         
-        if st.session_state.active_quest:
-            q = st.session_state.active_quest
-            st.info(f"📌 **현재 수사 중인 사건:** {q['title']}")
-            st.write(f"**사건 개요:** {q['description']}")
-            st.markdown("---")
+        if st.button("⚔️ 이 직업으로 모험 시작하기", use_container_width=True):
+            initial_action = f"인간 종족의 '{selected_job}' 직업으로 모험을 시작합니다. 고아원을 떠나 판타지 마을에 도착해 상점(초보용품만 판매)과 마을 광장의 주민들을 만나 미스터리 추리 퀘스트를 시작하는 오프닝 상황을 제시해 주세요."
+            initial_dice = random.randint(1, 6)
             
-            # NPC 1 심문
-            c_n1, c_n2 = st.columns(2)
-            with c_n1:
-                st.write(f"**👤 {q['npc_1_name']}** (호감도: {q['npc_1_fav']})")
-                st.write(f"진술: *\"{q['npc_1_dialogue']}\"*")
-                if st.button(f"{q['npc_1_name']}에게 다가간다", key="talk_1"):
-                    q['npc_1_fav'] += 20
-                    if q['npc_1_is_liar'] and q['npc_1_fav'] < 40:
-                        st.warning(f"{q['npc_1_name']}: \"왜 자꾸 저를 의심하시죠? 억울합니다!\" (호감도가 부족해 진실을 숨깁니다)")
-                    else:
-                        if q['npc_1_clue'] not in q['collected_clues']:
-                            q['collected_clues'].append(q['npc_1_clue'])
-                        st.success(f"💡 단서 획득: {q['npc_1_clue']}")
+            job_stats = {
+                "전사": "종족: 인간\n직업: 전사\n레벨: 1 (경험치: 0/100)\n체력(HP): 120/120\n마나(MP): 10/10\n힘: 16\n체력스탯: 14\n지능: 8\n민첩: 10\n골드: 30G\n장착 장비: 무기: 녹슨 검, 갑옷: 낡은 가죽 갑옷\n인벤토리: 체력 포션 (소)\n사용가능한 마법 및 기술: 강한 베기, 방어태세",
+                "마법사": "종족: 인간\n직업: 마법사\n레벨: 1 (경험치: 0/100)\n체력(HP): 70/70\n마나(MP): 50/50\n힘: 8\n체력스탯: 8\n지능: 16\n민첩: 10\n골드: 40G\n장착 장비: 무기: 마력의 나무 지팡이, 갑옷: 천 로브\n인벤토리: 마나 포션 (소)\n사용가능한 마법 및 기술: 마력탄, 마나 보호막",
+                "도적": "종족: 인간\n직업: 도적\n레벨: 1 (경험치: 0/100)\n체력(HP): 80/80\n마나(MP): 20/20\n힘: 10\n체력스탯: 9\n지능: 11\n민첩: 16\n골드: 50G\n장착 장비: 무기: 단검 쌍수, 갑옷: 가죽 조끼\n인벤토리: 해독제, 연막탄\n사용가능한 마법 및 기술: 급습, 잠금 해제",
+                "성기사": "종족: 인간\n직업: 성기사\n레벨: 1 (경험치: 0/100)\n체력(HP): 110/110\n마나(MP): 30/30\n힘: 14\n체력스탯: 14\n지능: 12\n민첩: 8\n골드: 20G\n장착 장비: 무기: 축복받은 메이스, 갑옷: 철제 흉갑\n인벤토리: 성수\n사용가능한 마법 및 기술: 징벌, 치유 기원",
+                "사냥꾼": "종족: 인간\n직업: 사냥꾼\n레벨: 1 (경험치: 0/100)\n체력(HP): 90/90\n마나(MP): 20/20\n힘: 11\n체력스탯: 10\n지능: 10\n민첩: 15\n골드: 35G\n장착 장비: 무기: 숏보우, 갑옷: 사냥꾼 가죽옷\n인벤토리: 화살 30발\n사용가능한 마법 및 기술: 정밀 사격, 덫 설치"
+            }
+            st.session_state.status_sync_text = job_stats.get(selected_job, default_sync_text)
 
-            # NPC 2 심문
-            with c_n2:
-                st.write(f"**👤 {q['npc_2_name']}** (호감도: {q['npc_2_fav']})")
-                st.write(f"진술: *\"{q['npc_2_dialogue']}\"*")
-                if st.button(f"{q['npc_2_name']}에게 다가간다", key="talk_2"):
-                    q['npc_2_fav'] += 20
-                    if q['npc_2_is_liar'] and q['npc_2_fav'] < 40:
-                        st.warning(f"{q['npc_2_name']}: \"할 말 없습니다. 더 묻지 마세요.\" (입을 굳게 다물고 있습니다)")
-                    else:
-                        if q['npc_2_clue'] not in q['collected_clues']:
-                            q['collected_clues'].append(q['npc_2_clue'])
-                        st.success(f"💡 단서 획득: {q['npc_2_clue']}")
+            with st.spinner("모험의 세계를 생성하는 중..."):
+                res = call_ai_sync_text(initial_action, initial_dice)
+                if res:
+                    st.session_state.status_sync_text = res.status_sync_text
+                    st.session_state.active_quest_info = res.quest_update
+                    st.session_state.history.append({
+                        "role": "assistant",
+                        "narrative": f"🎲 [주사위 결과: {initial_dice}]\n\n" + res.narrative,
+                        "choices": res.choices,
+                    })
+                    append_ai_log(res.narrative)
+                    save_game()
+                    st.rerun()
 
-            st.markdown("---")
-            st.markdown("#### 🔎 수집된 단서 노트")
-            if q['collected_clues']:
-                for clue in q['collected_clues']:
-                    st.text(f"- {clue}")
-            else:
-                st.text("수집된 단서가 없습니다. 주민들과 적극적으로 대화해보세요.")
+    # 2. 정상 플레이 진행
+    else:
+        for h in st.session_state.history:
+            with st.chat_message(h["role"]):
+                st.markdown(h.get("narrative", ""))
+                
+                if h["role"] == "assistant":
+                    narrative_text = h.get("narrative", "")
+                    safe_text = narrative_text.replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
+                    
+                    html_code = f"""
+                    <div style="margin-top: 5px; margin-bottom: 5px;">
+                        <button onclick="window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('{safe_text}'); u.lang='ko-KR'; window.speechSynthesis.speak(u);" 
+                                style="background-color: #262730; color: white; border: 1px solid #4a4a4a; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: sans-serif; font-weight: bold;">
+                            🔊 음성으로 듣기
+                        </button>
+                    </div>
+                    """
+                    components.html(html_code, height=45)
 
-            st.markdown("---")
-            st.markdown("#### ⚖️ 진범 지목 (추리 결판)")
-            suspects = [q['npc_1_name'], q['npc_2_name']]
-            chosen = st.selectbox("범인으로 의심되는 인물을 선택하세요", suspects)
+        current_choices = []
+        if st.session_state.history:
+            last_h = st.session_state.history[-1]
+            current_choices = last_h.get("choices", [])
+
+        user_action = None
+        if current_choices:
+            st.markdown("##### 🎯 행동 선택 (선택 시 주사위가 굴러갑니다)")
+            for idx, ch in enumerate(current_choices):
+                col_btn, col_tts = st.columns([5, 1])
+                with col_btn:
+                    if st.button(
+                        f"👉 {ch}",
+                        key=f"ch_{len(st.session_state.history)}_{idx}",
+                        use_container_width=True,
+                    ):
+                        user_action = ch
+                with col_tts:
+                    safe_ch = ch.replace('"', '\\"').replace("'", "\\'").replace('\n', ' ')
+                    ch_tts_html = f"""
+                    <div style="margin-top: 2px;">
+                        <button onclick="window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance('{safe_ch}'); u.lang='ko-KR'; window.speechSynthesis.speak(u);" 
+                                style="background-color: #262730; color: white; border: 1px solid #4a4a4a; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%;">
+                            🔊 듣기
+                        </button>
+                    </div>
+                    """
+                    components.html(ch_tts_html, height=45)
+
+        chat_input = st.chat_input("원하는 행동을 직접 입력하세요 (예: 상점 주인에게 초보용 포션 구매, 촌장과 대화하기 등)...")
+        final_input = user_action or chat_input
+
+        if final_input:
+            dice_val = random.randint(1, 6)
             
-            if st.button("🚨 이 사람을 범인으로 고발한다!", use_container_width=True):
-                if chosen == q['correct_culprit']:
-                    st.balloons()
-                    st.success(f"🎯 정답입니다! 진범 {chosen}의 거짓말을 폭로하고 사건을 해결했습니다.")
-                    
-                    # 점진적 스탯 상승 및 보상 적용
-                    stat_name = q['reward_stat_name']
-                    boost = q['reward_stat_boost']
-                    if stat_name in st.session_state.stats:
-                        st.session_state.stats[stat_name] += boost
-                    else:
-                        st.session_state.stats["힘"] += boost
+            display_user_input = f"{final_input} (🎲 주사위 굴림: {dice_val})"
+            st.session_state.history.append(
+                {"role": "user", "narrative": display_user_input}
+            )
+            with st.chat_message("user"):
+                st.markdown(display_user_input)
+
+            with st.spinner(f"🎲 주사위가 굴러갑니다... [눈금: {dice_val}] 판정 및 추리/전투 처리 중..."):
+                res = call_ai_sync_text(final_input, dice_val)
+
+                if res:
+                    st.session_state.status_sync_text = res.status_sync_text
+                    st.session_state.active_quest_info = res.quest_update
+
+                    st.session_state.history.append({
+                        "role": "assistant",
+                        "narrative": f"🎲 **[주사위 결과: {dice_val}]**\n\n" + res.narrative,
+                        "choices": res.choices,
+                    })
+
+                    append_ai_log(f"[주사위: {dice_val}] {res.narrative}")
+
+                    if len(st.session_state.history) > 30:
+                        st.session_state.history = st.session_state.history[-30:]
                         
-                    st.session_state.gear = q['reward_gear']
-                    if q['reward_skill'] not in st.session_state.skills:
-                        st.session_state.skills.append(q['reward_skill'])
-                        
-                    st.info(f"✨ [퀘스트 보상] {stat_name} +{boost} 상승! | 신규 장비: {q['reward_gear']} | 신규 기술: {q['reward_skill']}")
-                    
-                    st.session_state.active_quest = None
-                else:
-                    st.error("❌ 틀렸습니다! 증거가 부족하거나 무고한 주민을 지목했습니다. 대화를 더 나눠보세요.")
-
-        st.markdown("---")
-        if st.button("🏠 마을 광장 메인으로 돌아가기"):
-            st.session_state.location = "town"
-            st.rerun()
-
-
-# ==========================================
-# 🌲 6. 사냥터 (필드 전투 및 성장)
-# ==========================================
-elif st.session_state.location == "hunting":
-    st.title("🌲 사냥터: 루멘 외곽 숲")
-    st.markdown("사냥을 통해 경험치와 골드를 얻을 수 있습니다. 하지만 장비와 스탯이 부족하면 강력한 몬스터에게 패배합니다!")
-    st.markdown("---")
-
-    power_score = sum(st.session_state.stats.values()) + (st.session_state.level * 10)
-    
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        st.markdown("#### 🟢 초급 사냥터 (슬라임, 포이즌 고블린)")
-        if st.button("사냥 시작하기 (권장 전투력: 40 이상)", use_container_width=True):
-            st.session_state.exp += 35
-            st.session_state.gold += 20
-            st.success("사냥 성공! 경험치 +35, 골드 +20G 획득")
-            if st.session_state.exp >= st.session_state.max_exp:
-                st.session_state.level += 1
-                st.session_state.exp = 0
-                st.session_state.max_exp = int(st.session_state.max_exp * 1.5)
-                st.balloons()
-                st.success(f"🎉 레벨 업! 현재 Lv. {st.session_state.level}")
-            st.rerun()
-
-    with col_h2:
-        st.markdown("#### 🔴 중급 사냥터 (오크 약탈자, 섀도우 울프)")
-        st.markdown("*주의: 추리 퀘스트를 해결하여 스탯과 장비를 강화하지 않으면 사냥할 수 없습니다!*")
-        if st.button("중급 사냥 도전 (요구 전투력: 70 이상)", use_container_width=True):
-            if power_score >= 70:
-                st.session_state.exp += 75
-                st.session_state.gold += 50
-                st.success("중급 사냥 승리! 막대한 경험치와 골드를 획득했습니다.")
-                if st.session_state.exp >= st.session_state.max_exp:
-                    st.session_state.level += 1
-                    st.session_state.exp = 0
-                    st.session_state.max_exp = int(st.session_state.max_exp * 1.5)
-                    st.balloons()
-                st.rerun()
-            else:
-                st.error("❌ 전투력이 부족하여 몬스터에게 패배했습니다! 마을로 돌아가 '추리 퀘스트'를 해결하고 장비와 스탯을 키우세요.")
-
-    st.markdown("---")
-    if st.button("🏠 마을로 돌아가기"):
-        st.session_state.location = "town"
-        st.rerun()
+                    save_game()
+                    st.rerun()
