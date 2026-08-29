@@ -17,7 +17,7 @@ st.set_page_config(
 )
 st.title("🎲 주사위 판정 모험 텍스트 RPG")
 st.markdown(
-    "선택에 따라 주사위(1~6)가 굴러가며, 필드와 던전 탐험 시 적 조우(-50%~+50% 난이도), 아이템/마법서 획득, 희귀 함정 판정이 일어나는 모험 게임입니다."
+    "선택에 따라 주사위(1~6)가 굴러가며, 필드와 던전 탐험 시 적 조우(-50%~+50% 난이도), 아이템/마법서 획득, 그리고 전투 시 한 번에 결판이 나는 시스템입니다."
 )
 
 # 🎨 [스크롤 위치 복원 JS]
@@ -58,7 +58,7 @@ st.markdown(
 # 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="주사위 눈의 결과와 플레이어의 선택을 반영한 상세한 현장 묘사 및 서사. 적과의 조우(-50%~+50% 난이도), 아이템/마법서 획득, 혹은 드문 함정(주사위 3~6은 피해 없음, 2 이하는 약한 피해) 결과를 흥미진진하게 서술하세요. 사망이나 게임 오버는 절대 발생하지 않습니다."
+        description="주사위 눈의 결과와 플레이어의 선택을 반영한 상세한 현장 묘사 및 서사. 적과 조우하여 전투 행동을 고른 경우, 매 라운드 쪼개지 말고 주사위와 스탯 계산을 통해 전투의 시작부터 끝(승리, 보상, 혹은 피해 후 마무리)까지 한 번에 결판을 내어 묘사하세요."
     )
     status_sync_text: str = Field(
         description=(
@@ -79,7 +79,7 @@ class SyncTextRPGResponse(BaseModel):
         )
     )
     choices: list[str] = Field(
-        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지. 필드, 던전, 동굴 진입 및 탐색 선택지를 포함하세요."
+        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지. 전투가 끝났다면 다음 탐색이나 이동에 관한 선택지를 제시하세요."
     )
 
 
@@ -138,9 +138,9 @@ if "history" not in st.session_state:
 
 if "game_concept" not in st.session_state:
     st.session_state.game_concept = (
-        saved_data.get("game_concept", "판타지 모험. 필드, 던전, 동굴 진입 시 주사위 판정에 따라 -50%~+50% 난이도의 적 조우, 아이템/마법서 획득, 혹은 희귀 함정(2 이하 시 약한 피해, 3 이상 시 무사 통과)이 발생함. 사망 없음.")
+        saved_data.get("game_concept", "판타지 모험. 필드, 던전, 동굴 탐색 시 주사위 판정으로 적 조우(-50%~+50% 난이도), 아이템/마법서 획득, 함정 발생. 전투 시 선택지를 고르면 매 라운드 쪼개지 않고 한 번의 판정으로 전투의 결말(승리/보상)까지 깔끔하게 끝마침.")
         if saved_data
-        else "판타지 모험. 필드, 던전, 동굴 진입 시 주사위 판정에 따라 -50%~+50% 난이도의 적 조우, 아이템/마법서 획득, 혹은 희귀 함정(2 이하 시 약한 피해, 3 이상 시 무사 통과)이 발생함. 사망 없음."
+        else "판타지 모험. 필드, 던전, 동굴 탐색 시 주사위 판정으로 적 조우(-50%~+50% 난이도), 아이템/마법서 획득, 함정 발생. 전투 시 선택지를 고르면 매 라운드 쪼개지 않고 한 번의 판정으로 전투의 결말(승리/보상)까지 깔끔하게 끝마침."
     )
 
 
@@ -280,11 +280,12 @@ def call_ai_sync_text(user_action, dice_val):
         "【규칙】\n"
         "1. 사망이나 영구적 파멸은 절대 없습니다. 어떤 선택을 하거나 실패하더라도 게임이 끝나지 않으며, 피해를 입어도 체력이 최소 1 이상 남거나 회복 수단이 제공됩니다.\n"
         "2. 플레이어가 행동을 선택할 때마다 주사위 눈(1~6) 결과가 함께 전달됩니다. 주사위 판정 결과를 서사에 적극적으로 반영하세요.\n"
-        "3. 필드, 던전, 동굴 등에 진입하거나 탐색할 때:\n"
-        "   - 적 조우 시, 현재 캐릭터 스탯을 기준으로 -50% ~ +50% 난이도 차이를 가진 적을 등장시키세요.\n"
+        "3. 전투 상황 규칙 (매우 중요): 적을 만나서 공격이나 전투 관련 선택지를 고르면, 매 라운드마다 번거롭게 선택지를 주지 말고, 이번 한 번의 선택과 주사위 결과 및 캐릭터 스탯을 바탕으로 **전투의 처음부터 끝(적 격파, 보상 획득 혹은 도망 등)까지의 결과와 결말을 한 번에 마무리**하여 서사로 작성하세요.\n"
+        "4. 필드, 던전, 동굴 등에 진입하거나 탐색할 때:\n"
+        "   - 적 조우 시, 현재 캐릭터 스탯을 기준으로 -50% ~ +50% 난이도 차이를 가진 적을 등장시키고 전투 결말까지 한 번에 처리하세요.\n"
         "   - 유용한 아이템이나 새로운 마법서(사용 가능한 마법 및 기술 추가)를 획득할 수 있습니다.\n"
-        "   - 함정은 아주 드물게 발생하며, 주사위 눈이 3 이상이면 피해 없이 넘어가고, 2 이하이면 약한 피해(체력 소모 등)를 입습니다.\n"
-        "4. 캐릭터 상태 동기화 텍스트(status_sync_text)의 모든 항목(종족, 직업, 레벨, HP, MP, 스탯, 골드, 장비, 인벤토리, 마법/기술)을 최신 상태로 갱신하세요."
+        "   - 함정은 아주 드물게 발생하며, 주사위 눈이 3 이상이면 피해 없이 넘어가고, 2 이하이면 약한 피해를 입습니다.\n"
+        "5. 캐릭터 상태 동기화 텍스트(status_sync_text)의 모든 항목을 최신 상태로 갱신하세요."
     )
 
     prompt = (
@@ -327,6 +328,7 @@ def call_ai_sync_text(user_action, dice_val):
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"},
+                max_tokens=2048,  # 👈 Groq 토큰 잘림 오류 방지용 설정
                 temperature=0.7,
             )
             return SyncTextRPGResponse.model_validate_json(response.choices[0].message.content)
@@ -425,7 +427,6 @@ else:
         if final_input:
             dice_val = random.randint(1, 6)
             
-            # 유저 행동 로그에 주사위 눈 결과 포함하여 표시
             display_user_input = f"{final_input} (🎲 주사위 굴림: {dice_val})"
             st.session_state.history.append(
                 {"role": "user", "narrative": display_user_input}
@@ -433,7 +434,7 @@ else:
             with st.chat_message("user"):
                 st.markdown(display_user_input)
 
-            with st.spinner(f"🎲 주사위가 굴러갑니다... [눈금: {dice_val}] 판정 중..."):
+            with st.spinner(f"🎲 주사위가 굴러갑니다... [눈금: {dice_val}] 판정 및 전투 결말 처리 중..."):
                 res = call_ai_sync_text(final_input, dice_val)
 
                 if res:
