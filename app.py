@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
@@ -12,11 +13,11 @@ SAVE_FILE = "rpg_sync_text_save.json"
 LOG_FILE = "rpg_story_log.txt"
 
 st.set_page_config(
-    page_title="하드코어 텍스트 RPG", page_icon="⚔️", layout="wide"
+    page_title="주사위 판정 텍스트 RPG", page_icon="🎲", layout="wide"
 )
-st.title("⚔️ 하드코어 텍스트 RPG (자비 없는 생존)")
+st.title("🎲 주사위 판정 모험 텍스트 RPG")
 st.markdown(
-    "선택에 따라 파멸과 죽음이 도사리는 하드코어 판타지 세계관입니다. 방심하면 영구 사망(Permadeath)합니다."
+    "선택에 따라 주사위(1~6)가 굴러가며, 필드와 던전 탐험 시 적 조우(-50%~+50% 난이도), 아이템/마법서 획득, 희귀 함정 판정이 일어나는 모험 게임입니다."
 )
 
 # 🎨 [스크롤 위치 복원 JS]
@@ -57,35 +58,33 @@ st.markdown(
 # 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="상세하고 냉혹한 현장 묘사와 몰입감 있는 스토리 서사. 플레이어의 행동에 따른 잔인하거나 치명적인 결과를 숨기지 말고 묘사하세요. 사망 시 비참한 최후를 상세히 묘사하세요."
+        description="주사위 눈의 결과와 플레이어의 선택을 반영한 상세한 현장 묘사 및 서사. 적과의 조우(-50%~+50% 난이도), 아이템/마법서 획득, 혹은 드문 함정(주사위 3~6은 피해 없음, 2 이하는 약한 피해) 결과를 흥미진진하게 서술하세요. 사망이나 게임 오버는 절대 발생하지 않습니다."
     )
     status_sync_text: str = Field(
         description=(
             "현재 캐릭터의 상태 텍스트 블록. 반드시 항목별로 줄바꿈 포함:\n"
-            "상태: 생존 또는 사망(GAME OVER)\n"
             "종족: 인간\n"
             "직업: 전사\n"
             "레벨: 1 (경험치: 0/100)\n"
             "체력(HP): 100/100\n"
             "마나(MP): 20/20\n"
-            "힘: 15\n"
-            "체력스탯: 14\n"
-            "지능: 8\n"
+            "힘: 10\n"
+            "체력스탯: 10\n"
+            "지능: 10\n"
             "민첩: 10\n"
             "골드: 50G\n"
             "장착 장비: 무기: 낡은 단검, 갑옷: 누더기 옷\n"
-            "인벤토리: 싸구려 체력 포션 (소)\n"
-            "사용가능한 마법 및 기술: 베기, 도망치기\n"
+            "인벤토리: 체력 포션 (소)\n"
+            "사용가능한 마법 및 기술: 기본 공격, 도망치기\n"
         )
     )
     choices: list[str] = Field(
-        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지. 함정과 위험한 선택지를 반드시 포함하며, 레벨업 시 스탯(힘, 체력스탯, 지능, 민첩 중 1개)을 올리는 선택지를 포함해야 합니다."
+        description="플레이어가 다음에 선택할 수 있는 행동지침 3~4가지. 필드, 던전, 동굴 진입 및 탐색 선택지를 포함하세요."
     )
 
 
 # 💾 [기본 데이터 및 세이브/로드 관리]
 default_sync_text = (
-    "상태: 생존\n"
     "종족: 인간\n"
     "직업: 미정\n"
     "레벨: 1 (경험치: 0/100)\n"
@@ -106,7 +105,6 @@ def save_game():
         "status_sync_text": st.session_state.get("status_sync_text", default_sync_text),
         "history": st.session_state.get("history", []),
         "game_concept": st.session_state.get("game_concept", ""),
-        "is_game_over": st.session_state.get("is_game_over", False),
     }
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -140,14 +138,9 @@ if "history" not in st.session_state:
 
 if "game_concept" not in st.session_state:
     st.session_state.game_concept = (
-        saved_data.get("game_concept", "다크 판타지, 자비 없는 생존, 플레이어의 잘못된 선택은 부상, 자원 손실, 혹은 즉각적인 영구 사망(GAME OVER)을 초래함.")
+        saved_data.get("game_concept", "판타지 모험. 필드, 던전, 동굴 진입 시 주사위 판정에 따라 -50%~+50% 난이도의 적 조우, 아이템/마법서 획득, 혹은 희귀 함정(2 이하 시 약한 피해, 3 이상 시 무사 통과)이 발생함. 사망 없음.")
         if saved_data
-        else "다크 판타지, 자비 없는 생존, 플레이어의 잘못된 선택은 부상, 자원 손실, 혹은 즉각적인 영구 사망(GAME OVER)을 초래함."
-    )
-
-if "is_game_over" not in st.session_state:
-    st.session_state.is_game_over = (
-        saved_data.get("is_game_over", False) if saved_data else False
+        else "판타지 모험. 필드, 던전, 동굴 진입 시 주사위 판정에 따라 -50%~+50% 난이도의 적 조우, 아이템/마법서 획득, 혹은 희귀 함정(2 이하 시 약한 피해, 3 이상 시 무사 통과)이 발생함. 사망 없음."
     )
 
 
@@ -225,7 +218,7 @@ clean_status = (
 )
 
 keys_to_break = [
-    "상태:", "종족:", "직업:", "레벨:", "체력(HP):", "마나(MP):", 
+    "종족:", "직업:", "레벨:", "체력(HP):", "마나(MP):", 
     "힘:", "체력스탯:", "지능:", "민첩:", "골드:", 
     "장착 장비:", "인벤토리:", "사용가능한 마법 및 기술:"
 ]
@@ -259,7 +252,6 @@ if uploaded_file is not None:
             st.session_state.status_sync_text = loaded_data["status_sync_text"]
             st.session_state.history = loaded_data["history"]
             st.session_state.game_concept = loaded_data.get("game_concept", st.session_state.game_concept)
-            st.session_state.is_game_over = loaded_data.get("is_game_over", False)
             save_game()
             st.sidebar.success("🎉 불러오기 성공!")
             st.rerun()
@@ -280,23 +272,27 @@ if st.sidebar.button("🔄 전체 초기화 및 새 게임", use_container_width
 
 
 # 🤖 [AI 호출 함수]
-def call_ai_sync_text(user_action):
+def call_ai_sync_text(user_action, dice_val):
     concept_str = st.session_state.game_concept.strip()
     system_instruction = (
-        "당신은 자비 없고 냉혹한 하드코어 판타지 TRPG 게임 마스터(GM)입니다.\n"
+        "당신은 판타지 RPG의 게임 마스터(GM)입니다.\n"
         f"[게임 컨셉]\n{concept_str}\n\n"
-        "【절대 규칙】\n"
-        "1. 플레이어의 선택이 무모하거나 잘못되면, 구제불능의 부상, 아이템 손실, 혹은 즉각적인 영구 사망(GAME OVER) 처리를 가감 없이 수행하세요. 절대로 억지 해피엔딩이나 우연한 행운으로 플레이어를 구해주지 마세요.\n"
-        "2. 체력(HP)이 0이 되거나 치명적인 함정을 밟으면 '상태: 사망(GAME OVER)'으로 기록하고 모험을 종료시키세요.\n"
-        "3. 레벨업 시 플레이어가 스탯(힘, 체력스탯, 지능, 민첩 중 1개)을 선택하여 올릴 수 있도록 선택지에 반영하세요.\n"
-        "4. 캐릭터 상태 동기화 텍스트(status_sync_text)의 모든 항목(상태, 종족, 직업, 레벨, HP, MP, 힘, 체력스탯, 지능, 민첩, 골드 등)을 갱신하세요."
+        "【규칙】\n"
+        "1. 사망이나 영구적 파멸은 절대 없습니다. 어떤 선택을 하거나 실패하더라도 게임이 끝나지 않으며, 피해를 입어도 체력이 최소 1 이상 남거나 회복 수단이 제공됩니다.\n"
+        "2. 플레이어가 행동을 선택할 때마다 주사위 눈(1~6) 결과가 함께 전달됩니다. 주사위 판정 결과를 서사에 적극적으로 반영하세요.\n"
+        "3. 필드, 던전, 동굴 등에 진입하거나 탐색할 때:\n"
+        "   - 적 조우 시, 현재 캐릭터 스탯을 기준으로 -50% ~ +50% 난이도 차이를 가진 적을 등장시키세요.\n"
+        "   - 유용한 아이템이나 새로운 마법서(사용 가능한 마법 및 기술 추가)를 획득할 수 있습니다.\n"
+        "   - 함정은 아주 드물게 발생하며, 주사위 눈이 3 이상이면 피해 없이 넘어가고, 2 이하이면 약한 피해(체력 소모 등)를 입습니다.\n"
+        "4. 캐릭터 상태 동기화 텍스트(status_sync_text)의 모든 항목(종족, 직업, 레벨, HP, MP, 스탯, 골드, 장비, 인벤토리, 마법/기술)을 최신 상태로 갱신하세요."
     )
 
     prompt = (
         f"[현재 캐릭터 상태 동기화 정보]\n{st.session_state.status_sync_text}\n\n"
         f"최근 대화 기록:\n"
         + json.dumps(st.session_state.history[-6:], ensure_ascii=False)
-        + f"\n\n플레이어의 행동 또는 선택: {user_action}"
+        + f"\n\n플레이어의 행동 또는 선택: {user_action}\n"
+        + f"🎲 [이번 턴 굴린 주사위 결과]: {dice_val} (1~6 중 랜덤)"
     )
 
     if ai_provider == "Google Gemini":
@@ -309,7 +305,7 @@ def call_ai_sync_text(user_action):
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
                     response_schema=SyncTextRPGResponse,
-                    temperature=0.8,
+                    temperature=0.7,
                 ),
             )
             return SyncTextRPGResponse.model_validate_json(response.text)
@@ -331,7 +327,7 @@ def call_ai_sync_text(user_action):
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.8,
+                temperature=0.7,
             )
             return SyncTextRPGResponse.model_validate_json(response.choices[0].message.content)
         except Exception as e:
@@ -343,52 +339,38 @@ def call_ai_sync_text(user_action):
 if not api_key_input:
     st.warning(f"⚠️ 좌측 사이드바에 {ai_provider} API 키를 입력해 주세요.")
 else:
-    # 1. 게임 오버 처리
-    if st.session_state.is_game_over:
-        st.error("💀 당신은 사망했습니다. 영구 사망(Permadeath) 규칙에 따라 이 모험은 실패로 끝났습니다.")
-        if st.button("🔥 완전히 새로운 스토리와 모험으로 다시 시작하기", use_container_width=True):
-            if os.path.exists(SAVE_FILE):
-                os.remove(SAVE_FILE)
-            if os.path.exists(LOG_FILE):
-                os.remove(LOG_FILE)
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
-
-    # 2. 직업 선택 화면 (처음 시작할 때)
-    elif not st.session_state.history:
+    # 1. 직업 선택 화면 (처음 시작할 때)
+    if not st.session_state.history:
         st.subheader("🛡️ 캐릭터 직업 선택")
         selected_job = st.selectbox("원하는 직업을 선택하세요", ["전사", "마법사", "도적", "성기사", "사냥꾼"])
         
-        if st.button("⚔️ 이 직업으로 하드코어 모험 시작하기", use_container_width=True):
-            initial_action = f"인간 종족의 '{selected_job}' 직업으로 새롭고 위험 가득한 하드코어 모험을 시작합니다. 첫 번째 오프닝 상황을 묘사하고 위험한 선택지들을 제시해 주세요."
+        if st.button("⚔️ 이 직업으로 모험 시작하기", use_container_width=True):
+            initial_action = f"인간 종족의 '{selected_job}' 직업으로 모험을 시작합니다. 첫 번째 오프닝 상황과 필드/던전 탐색 선택지들을 제시해 주세요."
+            initial_dice = random.randint(1, 6)
             
-            # 직업별 초기 스탯 설정 반영
             job_stats = {
-                "전사": "상태: 생존\n종족: 인간\n직업: 전사\n레벨: 1 (경험치: 0/100)\n체력(HP): 120/120\n마나(MP): 10/10\n힘: 16\n체력스탯: 14\n지능: 8\n민첩: 10\n골드: 30G\n장착 장비: 무기: 녹슨 검, 갑옷: 낡은 가죽 갑옷\n인벤토리: 체력 포션 (소)\n사용가능한 마법 및 기술: 강한 베기, 방어태세",
-                "마법사": "상태: 생존\n종족: 인간\n직업: 마법사\n레벨: 1 (경험치: 0/100)\n체력(HP): 70/70\n마나(MP): 50/50\n힘: 8\n체력스탯: 8\n지능: 16\n민첩: 10\n골드: 40G\n장착 장비: 무기: 마력의 나무 지팡이, 갑옷: 천 로브\n인벤토리: 마나 포션 (소)\n사용가능한 마법 및 기술: 마력탄, 마나 보호막",
-                "도적": "상태: 생존\n종족: 인간\n직업: 도적\n레벨: 1 (경험치: 0/100)\n체력(HP): 80/80\n마나(MP): 20/20\n힘: 10\n체력스탯: 9\n지능: 11\n민첩: 16\n골드: 50G\n장착 장비: 무기: 단검 쌍수, 갑옷: 가죽 조끼\n인벤토리: 해독제, 연막탄\n사용가능한 마법 및 기술: 급습, 잠금 해제",
-                "성기사": "상태: 생존\n종족: 인간\n직업: 성기사\n레벨: 1 (경험치: 0/100)\n체력(HP): 110/110\n마나(MP): 30/30\n힘: 14\n체력스탯: 14\n지능: 12\n민첩: 8\n골드: 20G\n장착 장비: 무기: 축복받은 메이스, 갑옷: 철제 흉갑\n인벤토리: 성수\n사용가능한 마법 및 기술: 징벌, 치유 기원",
-                "사냥꾼": "상태: 생존\n종족: 인간\n직업: 사냥꾼\n레벨: 1 (경험치: 0/100)\n체력(HP): 90/90\n마나(MP): 20/20\n힘: 11\n체력스탯: 10\n지능: 10\n민첩: 15\n골드: 35G\n장착 장비: 무기: 숏보우, 갑옷: 사냥꾼 가죽옷\n인벤토리: 화살 30발\n사용가능한 마법 및 기술: 정밀 사격, 덫 설치"
+                "전사": "종족: 인간\n직업: 전사\n레벨: 1 (경험치: 0/100)\n체력(HP): 120/120\n마나(MP): 10/10\n힘: 16\n체력스탯: 14\n지능: 8\n민첩: 10\n골드: 30G\n장착 장비: 무기: 녹슨 검, 갑옷: 낡은 가죽 갑옷\n인벤토리: 체력 포션 (소)\n사용가능한 마법 및 기술: 강한 베기, 방어태세",
+                "마법사": "종족: 인간\n직업: 마법사\n레벨: 1 (경험치: 0/100)\n체력(HP): 70/70\n마나(MP): 50/50\n힘: 8\n체력스탯: 8\n지능: 16\n민첩: 10\n골드: 40G\n장착 장비: 무기: 마력의 나무 지팡이, 갑옷: 천 로브\n인벤토리: 마나 포션 (소)\n사용가능한 마법 및 기술: 마력탄, 마나 보호막",
+                "도적": "종족: 인간\n직업: 도적\n레벨: 1 (경험치: 0/100)\n체력(HP): 80/80\n마나(MP): 20/20\n힘: 10\n체력스탯: 9\n지능: 11\n민첩: 16\n골드: 50G\n장착 장비: 무기: 단검 쌍수, 갑옷: 가죽 조끼\n인벤토리: 해독제, 연막탄\n사용가능한 마법 및 기술: 급습, 잠금 해제",
+                "성기사": "종족: 인간\n직업: 성기사\n레벨: 1 (경험치: 0/100)\n체력(HP): 110/110\n마나(MP): 30/30\n힘: 14\n체력스탯: 14\n지능: 12\n민첩: 8\n골드: 20G\n장착 장비: 무기: 축복받은 메이스, 갑옷: 철제 흉갑\n인벤토리: 성수\n사용가능한 마법 및 기술: 징벌, 치유 기원",
+                "사냥꾼": "종족: 인간\n직업: 사냥꾼\n레벨: 1 (경험치: 0/100)\n체력(HP): 90/90\n마나(MP): 20/20\n힘: 11\n체력스탯: 10\n지능: 10\n민첩: 15\n골드: 35G\n장착 장비: 무기: 숏보우, 갑옷: 사냥꾼 가죽옷\n인벤토리: 화살 30발\n사용가능한 마법 및 기술: 정밀 사격, 덫 설치"
             }
             st.session_state.status_sync_text = job_stats.get(selected_job, default_sync_text)
 
-            with st.spinner("잔혹한 판타지 세계를 생성하는 중..."):
-                res = call_ai_sync_text(initial_action)
+            with st.spinner("모험의 세계를 생성하는 중..."):
+                res = call_ai_sync_text(initial_action, initial_dice)
                 if res:
                     st.session_state.status_sync_text = res.status_sync_text
-                    if "사망" in res.status_sync_text or "GAME OVER" in res.status_sync_text:
-                        st.session_state.is_game_over = True
                     st.session_state.history.append({
                         "role": "assistant",
-                        "narrative": res.narrative,
+                        "narrative": f"🎲 [주사위 결과: {initial_dice}]\n\n" + res.narrative,
                         "choices": res.choices,
                     })
                     append_ai_log(res.narrative)
                     save_game()
                     st.rerun()
 
-    # 3. 정상 플레이 진행
+    # 2. 정상 플레이 진행
     else:
         for h in st.session_state.history:
             with st.chat_message(h["role"]):
@@ -414,8 +396,8 @@ else:
             current_choices = last_h.get("choices", [])
 
         user_action = None
-        if current_choices and not st.session_state.is_game_over:
-            st.markdown("##### 🎯 행동 선택 (신중하게 고르세요)")
+        if current_choices:
+            st.markdown("##### 🎯 행동 선택 (선택 시 주사위가 굴러갑니다)")
             for idx, ch in enumerate(current_choices):
                 col_btn, col_tts = st.columns([5, 1])
                 with col_btn:
@@ -437,32 +419,33 @@ else:
                     """
                     components.html(ch_tts_html, height=45)
 
-        chat_input = st.chat_input("원하는 행동을 직접 입력하세요...", disabled=st.session_state.is_game_over)
+        chat_input = st.chat_input("원하는 행동을 직접 입력하세요...")
         final_input = user_action or chat_input
 
-        if final_input and not st.session_state.is_game_over:
+        if final_input:
+            dice_val = random.randint(1, 6)
+            
+            # 유저 행동 로그에 주사위 눈 결과 포함하여 표시
+            display_user_input = f"{final_input} (🎲 주사위 굴림: {dice_val})"
             st.session_state.history.append(
-                {"role": "user", "narrative": final_input}
+                {"role": "user", "narrative": display_user_input}
             )
             with st.chat_message("user"):
-                st.markdown(final_input)
+                st.markdown(display_user_input)
 
-            with st.spinner("게임 마스터가 냉혹한 판정을 내리는 중..."):
-                res = call_ai_sync_text(final_input)
+            with st.spinner(f"🎲 주사위가 굴러갑니다... [눈금: {dice_val}] 판정 중..."):
+                res = call_ai_sync_text(final_input, dice_val)
 
                 if res:
                     st.session_state.status_sync_text = res.status_sync_text
-                    
-                    if "사망" in res.status_sync_text or "GAME OVER" in res.status_sync_text or "체력(HP): 0" in res.status_sync_text:
-                        st.session_state.is_game_over = True
 
                     st.session_state.history.append({
                         "role": "assistant",
-                        "narrative": res.narrative,
+                        "narrative": f"🎲 **[주사위 결과: {dice_val}]**\n\n" + res.narrative,
                         "choices": res.choices,
                     })
 
-                    append_ai_log(res.narrative)
+                    append_ai_log(f"[주사위: {dice_val}] {res.narrative}")
 
                     if len(st.session_state.history) > 30:
                         st.session_state.history = st.session_state.history[-30:]
