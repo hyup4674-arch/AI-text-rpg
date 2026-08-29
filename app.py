@@ -32,7 +32,7 @@ class DynamicDeductionQuest(BaseModel):
 
 # 💾 [세션 초기화]
 if "location" not in st.session_state:
-    st.session_state.location = "orphanage" # orphanage, town, hunting, quest_board, active_quest, shop
+    st.session_state.location = "orphanage"
 
 if "level" not in st.session_state:
     st.session_state.level = 1
@@ -49,11 +49,18 @@ if "level" not in st.session_state:
     st.session_state.quest_history = []
 
 
-# ⚙️ [사이드바 설정]
+# ⚙️ [사이드바 설정 (AI 제공자 및 모델 선택)]
 st.sidebar.header("🤖 AI 및 API 설정")
 ai_provider = st.sidebar.selectbox("AI 제공자", ["Google Gemini", "Groq"])
 api_key = st.sidebar.text_input(f"{ai_provider} API 키", type="password")
-selected_model = st.sidebar.text_input("모델명 입력", value="gemini-2.5-flash" if ai_provider=="Google Gemini" else "llama-3.1-8b-instant")
+
+if ai_provider == "Google Gemini":
+    selected_model = st.sidebar.selectbox(
+        "Gemini 모델 선택",
+        ["gemini-3.1-lite", "gemini-3.5-lite", "gemini-3.6-lite"]
+    )
+else:
+    selected_model = st.sidebar.text_input("Groq 모델명 입력", value="llama-3.1-8b-instant")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ 내 정보 요약")
@@ -147,7 +154,7 @@ elif st.session_state.location == "town":
             st.rerun()
 
     st.markdown("---")
-    st.info("💡 **마을 사람의 조언:** \"여기 상점에서는 낡은 포션이나 초보용 방패 같은 기본적인 것밖에 안 팔아. 정말 강해지고 싶다면 마을 광장에서 사람들과 대화하며 **사건(추리 퀘스트)**을 해결해 보게나! 진정한 힘은 거기서 얻을 수 있네.\'")
+    st.info("💡 **마을 사람의 조언:** \"여기 상점에서는 낡은 포션이나 초보용 방패 같은 기본적인 것밖에 안 팔아. 정말 강해지고 싶다면 마을 광장에서 사람들과 대화하며 **사건(추리 퀘스트)**을 해결해 보게나! 진정한 힘은 거기서 얻을 수 있네.\"")
 
 
 # ==========================================
