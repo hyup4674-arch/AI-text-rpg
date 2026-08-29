@@ -49,15 +49,20 @@ if "level" not in st.session_state:
     st.session_state.quest_history = []
 
 
-# ⚙️ [사이드바 설정 (AI 제공자 및 모델 선택)]
+# ⚙️ [사이드바 설정 (AI 제공자 및 실제 사용 가능한 Gemini 3.1 라이트 이상 모델 선택)]
 st.sidebar.header("🤖 AI 및 API 설정")
 ai_provider = st.sidebar.selectbox("AI 제공자", ["Google Gemini", "Groq"])
 api_key = st.sidebar.text_input(f"{ai_provider} API 키", type="password")
 
 if ai_provider == "Google Gemini":
     selected_model = st.sidebar.selectbox(
-        "Gemini 모델 선택",
-        ["gemini-3.1-lite", "gemini-3.5-lite", "gemini-3.6-lite"]
+        "Gemini 모델 선택 (3.1 라이트 이상 실제 API 모델)",
+        [
+            "gemini-3.1-flash-lite", 
+            "gemini-3.5-flash-lite", 
+            "gemini-3.6-flash", 
+            "gemini-3.5-flash"
+        ]
     )
 else:
     selected_model = st.sidebar.text_input("Groq 모델명 입력", value="llama-3.1-8b-instant")
