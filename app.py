@@ -57,7 +57,7 @@ st.markdown(
 # 📋 [AI 응답 스키마]
 class SyncTextRPGResponse(BaseModel):
     narrative: str = Field(
-        description="인간의 본성을 파고드는 사랑, 전우애, 질투, 시기, 배신, 집단의 갈등, 모략 상세하고 몰입감 있는 스토리 서사 묘사. 주인공은 단지 전투만 하는게 아니라 판타지세상 에서 실제처럼 생존합니다 플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요."
+        description=" 상세한 현장 묘사 와 몰입감 있는 스토리 서사 묘사. 주플레이어의 행동에 따라 서사를 진행하고, 하단의 형식에 맞춰 캐릭터의 상태 동기화 텍스트(status_sync_text)를 반드시 최신 상태로 갱신하여 제공하세요."
     )
     status_sync_text: str = Field(
         description=(
@@ -159,9 +159,7 @@ else:
     groq_model_option = st.sidebar.selectbox(
         "Groq 모델 선택",
         options=[
-            "llama-3.1-8b-instant",
             "openai/gpt-oss-20b",
-            "llama-3.3-70b-versatile",
             "직접 입력",
         ],
         index=0,
