@@ -117,7 +117,7 @@ with tab1:
         for k, v in st.session_state.stats.items():
             st.text(f"- {k}: {v}")
     
-    st.write(**"보유 기술 및 마법:"**, ", ".join(st.session_state.skills))
+    st.markdown(f"**보유 기술 및 마법:** {', '.join(st.session_state.skills)}")
 
     st.markdown("---")
     st.subheader("🌲 필드 사냥터 (난이도 벽 시스템)")
